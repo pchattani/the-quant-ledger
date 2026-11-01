@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en" data-macro-site="ledger">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Quant Ledger · Equity factors, country by style</title>
+<meta name="description" content="The Quant Ledger: canonical equity long/short factors — momentum, value, quality, size, low volatility, investment, reversal, dividend yield — built the same way in every market we can short, sector-neutral and dollar-neutral at a 10% vol target, on public data. The country x style matrix, tear sheets, exposures, positions, pure factor returns, market access and methodology.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/ledger.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.3/plotly.min.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>The Quant <b>Ledger</b></h1>
+        <p class="sub">Equity long/short factors · <span id="brand-n">—</span> books · <span id="brand-m">—</span> markets · <span id="brand-f">—</span> styles · sector- and dollar-neutral at 10% vol</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="asof" id="freshness"></div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="tabs-inner" role="tablist">
+    <button class="tab" role="tab" data-tab="monitor" aria-selected="true" aria-controls="tab-monitor">Monitor</button>
+    <button class="tab" role="tab" data-tab="country" aria-selected="false" aria-controls="tab-country">Country</button>
+    <button class="tab" role="tab" data-tab="style" aria-selected="false" aria-controls="tab-style">Style</button>
+    <button class="tab" role="tab" data-tab="book" aria-selected="false" aria-controls="tab-book">Book</button>
+    <button class="tab" role="tab" data-tab="pure" aria-selected="false" aria-controls="tab-pure">Pure factors</button>
+    <button class="tab" role="tab" data-tab="access" aria-selected="false" aria-controls="tab-access">Markets &amp; access</button>
+    <button class="tab" role="tab" data-tab="methodology" aria-selected="false" aria-controls="tab-methodology">Methodology</button>
+  </div>
+</nav>
+
+<div class="ticker" aria-label="This year by style"><div class="ticker-in" id="tape"></div></div>
+
+<main id="main">
+<noscript><p class="noscript">The Quant Ledger needs JavaScript to draw its charts.</p></noscript>
+
+<!-- ── Monitor ─────────────────────────────────────────────────────────── -->
+<section id="tab-monitor" class="panel" role="tabpanel">
+  <div class="sh lg">
+    <div class="sh-main">
+      <span class="kicker">Equity factors</span>
+      <h2 class="sh-title">Every market, every style, one construction.</h2>
+      <p class="sh-sub" id="hero-sub"></p>
+    </div>
+    <div class="sh-side" id="hero-side"></div>
+  </div>
+  <section class="kpis" id="kpis" aria-label="Headline figures"></section>
+  <p class="caveat"><b>Read first</b>Simulated books on public end-of-day data. Universes are today's listings (survivorship bias); value and quality start around 2021 because Yahoo serves five annual statements; tier-3 cells cannot be shorted and are measurements, not products.</p>
+
+  <div class="filters">
+    <span class="filter-label">Construction</span>
+    <div class="seg" role="radiogroup" aria-label="Variant" data-filter="monitor.variant"></div>
+    <span class="filter-label">Window</span>
+    <div class="seg" role="radiogroup" aria-label="Window" data-filter="monitor.window"></div>
+    <span class="spacer"></span>
+    <span class="legend-note" id="matrix-count"></span>
+  </div>
+  <div class="grid">
+    <figure class="card" data-chart="matrix">
+      <figcaption><h3>Country × style <span class="ctx" id="matrix-ctx">Sharpe ratio, net of costs · select a cell to open the book · hatched = not shortable</span></h3>
+        <div class="card-tools"><a class="glossary-link" href="#tab=methodology&g=g-sharpe">ⓘ definitions</a></div></figcaption>
+      <div class="matrix" id="matrix"></div>
+      <div class="matrix-legend" id="matrix-legend"></div>
+    </figure>
+
+    <figure class="card twothirds" data-chart="comp_nav">
+      <figcaption><h3>Growth of 100 by style <span class="ctx">equal weight of every market's book, scaled to 10% vol · log scale</span></h3>
+        <div class="card-tools"><div class="seg" role="radiogroup" aria-label="Chart window" data-filter="monitor.navwindow"></div><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-comp-nav"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card third" data-chart="comp_corr">
+      <figcaption><h3>How the styles relate <span class="ctx">correlation of monthly composite returns</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-comp-corr"></div><div class="tablewrap" hidden></div>
+    </figure>
+
+    <figure class="card" data-chart="comp_board">
+      <figcaption><h3>Style board <span class="ctx">global composites · Sharpe by window · markets in each · select a row to open the style</span></h3></figcaption>
+      <div class="tablewrap" id="comp-board"></div>
+    </figure>
+
+    <figure class="card half" data-chart="comp_breadth">
+      <figcaption><h3>Breadth <span class="ctx">markets contributing to each composite through time</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-comp-breadth"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="comp_years">
+      <figcaption><h3>Styles by year <span class="ctx">composite return, % of capital at 10% vol</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-comp-years"></div><div class="tablewrap" hidden></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Country ─────────────────────────────────────────────────────────── -->
+<section id="tab-country" class="panel" role="tabpanel" hidden>
+  <div class="sel-row">
+    <span class="filter-label">Market</span>
+    <select class="ctl" id="country-select" aria-label="Market"></select>
+    <span id="country-tier"></span>
+    <span class="filter-label">Construction</span>
+    <div class="seg" role="radiogroup" aria-label="Variant" data-filter="country.variant"></div>
+  </div>
+  <div class="cb-head"><h2 id="country-name"></h2><span class="meta" id="country-meta"></span></div>
+  <div class="tiles" id="country-tiles"></div>
+  <div class="grid">
+    <figure class="card" data-chart="c_access">
+      <div class="desc-card"><div class="access" id="country-access"></div><div class="rule" id="country-rule"></div></div>
+    </figure>
+    <figure class="card twothirds" data-chart="c_nav">
+      <figcaption><h3>Every style in this market <span class="ctx">growth of 100 · sector-neutral, dollar-weighted · log · weekly</span></h3>
+        <div class="card-tools"><div class="seg" role="radiogroup" aria-label="Window" data-filter="country.window"></div><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-c-nav"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card third" data-chart="c_corr">
+      <figcaption><h3>Between the styles <span class="ctx">correlation of monthly returns</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-c-corr"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card" data-chart="c_board">
+      <figcaption><h3>Factor board <span class="ctx" id="c-board-ctx">Sharpe by window for the selected construction · select a row to open the book</span></h3></figcaption>
+      <div class="tablewrap" id="country-board"></div>
+    </figure>
+    <figure class="card half" data-chart="c_breadth">
+      <figcaption><h3>The universe through time <span class="ctx">names priced, and names eligible after the liquidity and price floors</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-c-breadth"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="c_sectors">
+      <figcaption><h3>Sector mix <span class="ctx">names per sector today · the groups the neutral books balance</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-c-sectors"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="c_years">
+      <figcaption><h3>Styles by year <span class="ctx">% of capital · sector-neutral, dollar-weighted</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-c-years"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="c_coverage">
+      <figcaption><h3>Data coverage <span class="ctx">first date each characteristic panel has 20 names · share of name-days covered in the last year</span></h3></figcaption>
+      <div class="tablewrap" id="country-coverage"></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Style ───────────────────────────────────────────────────────────── -->
+<section id="tab-style" class="panel" role="tabpanel" hidden>
+  <div class="sel-row">
+    <span class="filter-label">Style</span>
+    <select class="ctl" id="style-select" aria-label="Style"></select>
+    <span class="filter-label">Construction</span>
+    <div class="seg" role="radiogroup" aria-label="Variant" data-filter="style.variant"></div>
+  </div>
+  <div class="cb-head"><h2 id="style-name"></h2><span class="meta" id="style-meta"></span></div>
+  <div class="tiles" id="style-tiles"></div>
+  <div class="grid">
+    <figure class="card" data-chart="st_desc">
+      <div class="desc-card"><p class="sh-sub" style="margin:0" id="style-blurb"></p><div class="rule" id="style-rule"></div></div>
+    </figure>
+    <figure class="card twothirds" data-chart="st_nav">
+      <figcaption><h3>Every market <span class="ctx">growth of 100 · monthly · sector-neutral, dollar-weighted · hover a line</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-st-nav"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card third" data-chart="st_corr">
+      <figcaption><h3>Across markets <span class="ctx">correlation of monthly returns</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-st-corr"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card" data-chart="st_board">
+      <figcaption><h3>Market board <span class="ctx">Sharpe by window for the selected construction · select a row to open the book</span></h3></figcaption>
+      <div class="tablewrap" id="style-board"></div>
+    </figure>
+    <figure class="card" data-chart="st_years">
+      <figcaption><h3>Market × year <span class="ctx">% of capital · sector-neutral, dollar-weighted</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-st-years"></div><div class="tablewrap" hidden></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Book ────────────────────────────────────────────────────────────── -->
+<section id="tab-book" class="panel" role="tabpanel" hidden>
+  <div class="sel-row">
+    <span class="filter-label">Market</span><select class="ctl" id="book-market" aria-label="Market"></select>
+    <span class="filter-label">Style</span><select class="ctl" id="book-factor" aria-label="Style"></select>
+    <span class="filter-label">Construction</span><select class="ctl" id="book-variant" aria-label="Construction"></select>
+  </div>
+  <div class="cb-head"><h2 id="book-name"></h2><span class="meta" id="book-meta"></span></div>
+  <div class="tiles" id="book-tiles"></div>
+  <div class="grid">
+    <figure class="card twothirds" data-chart="b_nav">
+      <figcaption><h3>Growth of 100 and drawdown <span class="ctx">weekly · net of costs · log scale</span></h3>
+        <div class="card-tools"><div class="seg" role="radiogroup" aria-label="Window" data-filter="book.window"></div><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-b-nav"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card third" data-chart="b_tear">
+      <figcaption><h3>Tear sheet <span class="ctx">by window</span></h3></figcaption>
+      <div class="tablewrap" id="b-tear" style="max-height:520px"></div>
+    </figure>
+    <figure class="card twothirds" data-chart="b_calendar">
+      <figcaption><h3>Calendar <span class="ctx">monthly returns, % · the year's total at right</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-b-calendar"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card third" data-chart="b_annual">
+      <figcaption><h3>By year <span class="ctx">return, %</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-b-annual"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="b_rolling">
+      <figcaption><h3>Rolling Sharpe <span class="ctx">one year and three years</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-b-rolling"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="b_gearing">
+      <figcaption><h3>Gearing <span class="ctx">the scalar against its cap above · 63-day realised vol against the 10% target beneath</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-b-gearing"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="b_exposure">
+      <figcaption><h3>Exposure by sector <span class="ctx">× capital · quarterly average · gross stacked above, net beneath</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-b-exposure"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="b_activity">
+      <figcaption><h3>Turnover, cost and breadth <span class="ctx">gross traded ÷ capital per year · cost in bps of capital · names held</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-b-activity"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card twothirds" data-chart="b_positions">
+      <figcaption><h3>The book today <span class="ctx" id="b-pos-ctx">weight in % of capital · sector · vol · ADV · market value · this year's P&amp;L from the name</span></h3>
+        <div class="card-tools"><div class="seg" role="radiogroup" aria-label="Leg" data-filter="book.leg"></div></div></figcaption>
+      <div class="tablewrap" id="b-positions" style="max-height:560px"></div>
+    </figure>
+    <figure class="card third" data-chart="b_dd">
+      <figcaption><h3>Worst drawdowns</h3></figcaption>
+      <div class="tablewrap" id="b-dd"></div>
+      <figcaption style="margin-top:14px"><h3>Neutrality <span class="ctx">how far the held book drifts from zero</span></h3></figcaption>
+      <div class="tablewrap" id="b-neutral"></div>
+      <figcaption style="margin-top:14px"><h3>Monthly returns <span class="ctx">distribution, %</span></h3></figcaption>
+      <div class="plot" id="chart-b-dist"></div>
+    </figure>
+    <figure class="card" data-chart="b_config">
+      <figcaption><h3>Configuration, verbatim <span class="ctx">the config the platform ran</span></h3></figcaption>
+      <pre class="cfg" id="b-config"></pre>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Pure factors ────────────────────────────────────────────────────── -->
+<section id="tab-pure" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">Pure factors</span><h2 class="sh-title">The risk model's view</h2><p class="sh-sub">A characteristic factor model after toraniko: every day the cross-section of stock returns is regressed on sector dummies (constrained to sum to zero) and standardised style scores, weighted by the square root of market value. The coefficients are the return to one unit of a style with everything else held at zero. The long/short books are then regressed on them: what each book really loads on, and what is left.</p></div>
+  </div>
+  <div class="sel-row">
+    <span class="filter-label">Market</span>
+    <select class="ctl" id="pure-select" aria-label="Market"></select>
+    <span class="note" style="margin:0" id="pure-note"></span>
+  </div>
+  <div class="grid">
+    <figure class="card half" data-chart="p_styles">
+      <figcaption><h3>Pure style returns <span class="ctx">cumulative, one unit of exposure · weekly</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-p-styles"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="p_sectors">
+      <figcaption><h3>Pure sector returns <span class="ctx">cumulative, relative to the market · sum to zero by construction</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-p-sectors"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="p_stats">
+      <figcaption><h3>Pure factor statistics <span class="ctx">annualised return and Sharpe of each daily coefficient</span></h3></figcaption>
+      <div class="tablewrap" id="p-stats"></div>
+    </figure>
+    <figure class="card half" data-chart="p_loadings">
+      <figcaption><h3>What the books load on <span class="ctx">sector-neutral, dollar-weighted books regressed on market and pure styles · beta with t-stat · R² · Sharpe of the residual</span></h3></figcaption>
+      <div class="tablewrap" id="p-loadings"></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Markets & access ────────────────────────────────────────────────── -->
+<section id="tab-access" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">Markets &amp; access</span><h2 class="sh-title">Where a long/short book can trade</h2><p class="sh-sub" id="access-sub">Every market in the platform's table with its tier, MSCI's stock-lending and short-selling marks, the taxes on each leg, the borrow assumed, and the universe rule. Tier 1 is routine; tier 2 needs eligible lists, registration or reporting; tier 3 cannot be shorted and is measured, not traded.</p></div>
+  </div>
+  <div class="grid">
+    <figure class="card" data-chart="a_table">
+      <figcaption><h3>The market table <span class="ctx">sort any column · select a row for the detail</span></h3></figcaption>
+      <div class="tablewrap" id="access-table" style="max-height:720px"></div>
+    </figure>
+    <figure class="card" data-chart="a_detail">
+      <figcaption><h3 id="access-detail-title">Detail</h3></figcaption>
+      <div class="access" id="access-detail"></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Methodology ─────────────────────────────────────────────────────── -->
+<section id="tab-methodology" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">Methodology</span><h2 class="sh-title">How the numbers are made</h2><p class="sh-sub">One engine, one construction, every market and style run the same way on public data. What a factor is here, how a book is built from it, what the data can and cannot support, and a glossary for every figure on the site.</p></div>
+  </div>
+  <div class="grid">
+    <figure class="card"><div class="prose" id="method-prose"></div></figure>
+    <figure class="card" data-chart="factor_table">
+      <figcaption><h3>The styles <span class="ctx">what is ranked, how often the book is re-struck, where the definition comes from</span></h3></figcaption>
+      <div class="tablewrap" id="factor-table"></div>
+    </figure>
+    <figure class="card" data-chart="glossary">
+      <figcaption><h3>Glossary <span class="ctx">every number on the site, defined</span></h3></figcaption>
+      <div class="glossary" id="glossary"></div>
+    </figure>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="page">
+    <p><b>The Quant Ledger.</b> Every figure is the output of a simulated, hypothetical backtest of a systematic model on end-of-day public data; there is no live track record. Built by Prem Chattani in a personal capacity. For information only; not investment advice.</p>
+    <p class="disclaimer"><b>Disclaimer.</b> The information, analysis and views on this website are solely those of the author in a personal capacity and do not represent the views, opinions or positions of any current or former employer or affiliated institution. Nothing here constitutes investment, financial or trading advice, or a solicitation, recommendation or inducement to buy, sell or hold any financial instrument or to engage in any investment strategy. All figures are simulated results from systematic models run on historical end-of-day data with the configurations shown; no capital has been traded on them. Simulated results have inherent limitations, do not reflect the impact of actual trading and may differ materially from any real outcome; universes are survivorship-biased and all errors are the author's own. Market access notes summarise public regulatory information and MSCI's published accessibility assessments and are not legal advice. Users accept full responsibility for any decision made on the basis of this website and use it entirely at their own risk. Past performance, simulated or real, is not indicative of future results. This website is not registered with, nor supervised by, any financial regulatory authority.</p>
+  </div>
+</footer>
+
+<script type="module" src="assets/app.js"></script>
+<script src="assets/qm-family.js" data-site="ledger"></script>
+</body>
+</html>

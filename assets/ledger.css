@@ -1,0 +1,93 @@
+/* The Quant Ledger — what this site adds on top of the family base (style.css):
+   factor hues, tier badges, the country x style matrix, the book tables. */
+
+:root, :root[data-theme] {
+  /* factors: one hue each, assigned in this fixed order, never cycled */
+  --f-momentum: #7d93ff; --f-ewmom: #a9b7ff; --f-reversal: #5ec8f0; --f-value: #ffb224; --f-quality: #8fd16a;
+  --f-investment: #c39be8; --f-size: #f28fb5; --f-lowvol: #d9b38c; --f-lowbeta: #e8cfa0; --f-dividend: #ffd36a;
+  /* P&L polarity: up cobalt, down red-orange (the family's dove/hawk pair) */
+  --up: #7d93ff; --down: #ff6a4d; --up-rgb: 125,147,255; --down-rgb: 255,106,77;
+  --bench: #8e9ab0; --tier3: #ff6a4d; --tier2: #ffb224; --tier1: #8fd16a;
+}
+.up { color: var(--up); } .down { color: var(--down); }
+.f-momentum { --c: var(--f-momentum); } .f-ewmom { --c: var(--f-ewmom); } .f-reversal { --c: var(--f-reversal); } .f-value { --c: var(--f-value); }
+.f-quality { --c: var(--f-quality); } .f-investment { --c: var(--f-investment); } .f-size { --c: var(--f-size); } .f-lowvol { --c: var(--f-lowvol); }
+.f-lowbeta { --c: var(--f-lowbeta); } .f-dividend { --c: var(--f-dividend); }
+.tag.factor { color: var(--c, var(--ink-2)); background: color-mix(in srgb, var(--c, var(--s-3)) 16%, transparent); }
+.dot { display: inline-block; width: 9px; height: 9px; background: var(--c, var(--axis)); margin-right: 7px; vertical-align: 0; }
+
+/* ── Tier badges ────────────────────────────────────────────────────────── */
+.tier { display: inline-block; font: 700 10.5px/1 var(--font-cond); letter-spacing: .08em; text-transform: uppercase; padding: 4px 6px; }
+.tier.t1 { color: var(--tier1); background: color-mix(in srgb, var(--tier1) 14%, transparent); }
+.tier.t2 { color: var(--tier2); background: color-mix(in srgb, var(--tier2) 14%, transparent); }
+.tier.t3 { color: var(--tier3); background: color-mix(in srgb, var(--tier3) 14%, transparent); }
+
+/* ── The tape ───────────────────────────────────────────────────────────── */
+.tick .code { font-size: 22px; }
+.tick .when { color: var(--block-ink-2); }
+.tick .when.up { color: var(--up); } .tick .when.down { color: var(--down); }
+.tick .bank { max-width: 190px; }
+.tick .ylab { font: 700 10.5px/1.2 var(--font-cond); letter-spacing: .08em; text-transform: uppercase; color: var(--block-ink-3); }
+
+/* ── The country x style matrix ─────────────────────────────────────────── */
+.matrix { overflow: auto; }
+.matrix table.data th:first-child, .matrix table.data td:first-child { position: sticky; left: 0; background: var(--s-1); z-index: 1; }
+.matrix table.data td.n { padding: 0; }
+.matrix .cell { display: block; min-width: 54px; text-align: center; padding: 7px 6px; font: 500 12.5px/1 var(--font-num); font-variant-numeric: tabular-nums; cursor: pointer; }
+.matrix .cell:hover { outline: 1px solid var(--volt); outline-offset: -1px; }
+.matrix .cell.na { color: var(--ink-3); }
+.matrix .cell.measure { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(255,255,255,0.05) 5px 7px); }
+.matrix td.mk { white-space: nowrap; }
+.matrix td.mk b { font: 400 17px/1 var(--font-display); letter-spacing: .03em; margin-right: 8px; }
+.matrix td.mk small { color: var(--ink-3); font: 500 11px/1.2 var(--font-ui); }
+.matrix-legend { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; margin-top: 10px; color: var(--ink-3); font: 500 12px var(--font-ui); }
+.matrix-legend .sw { display: inline-block; width: 28px; height: 12px; vertical-align: -2px; margin-right: 6px; }
+
+/* ── Small multiples ────────────────────────────────────────────────────── */
+.multiples { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.mini { border-top-color: var(--c, var(--card-rule)); }
+.mini .t { font-size: 15px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini .nav { fill: none; stroke: var(--c, var(--ink-1)); stroke-width: 1.3; }
+.mini .area { fill: var(--c, var(--ink-1)); fill-opacity: .12; stroke: none; }
+.mini[aria-current="true"] { outline: 2px solid var(--volt); outline-offset: -2px; }
+
+/* ── Tiles, selectors, description cards ────────────────────────────────── */
+.tile .delta { white-space: normal; line-height: 1.35; }
+.tiles .tile .value { font-size: clamp(1.7rem, 2.4vw, 2.4rem); }
+.tile .value.up { color: var(--up); } .tile .value.down { color: var(--down); }
+.sel-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 2px 0 14px; }
+.sel-row select.ctl { min-width: 220px; max-width: 100%; }
+.desc-card { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; }
+.desc-card .rule { font: 600 12.5px/1.5 var(--font-cond); letter-spacing: .02em; color: var(--ink-2); background: var(--s-2); padding: 10px 12px; border-left: 4px solid var(--c, var(--card-rule)); }
+.desc-card .rule b { color: var(--ink-3); font: 700 11px/1.2 var(--font-cond); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 4px; }
+@media (max-width: 900px) { .desc-card { grid-template-columns: 1fr; } }
+pre.cfg { margin: 0; background: var(--block-2); border-left: 4px solid var(--card-rule); padding: 12px 14px; font: 500 12px/1.5 var(--font-num); color: var(--ink-2); overflow-x: auto; max-height: 520px; }
+.access { font: 500 13px/1.55 var(--font-ui); color: var(--ink-2); }
+.access b { color: var(--ink-1); }
+.access .data-notes { color: var(--ink-3); margin-top: 8px; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+table.data td.sym { font: 400 16px/1 var(--font-display); letter-spacing: .03em; white-space: nowrap; }
+table.data td.nm { color: var(--ink-2); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zbar.wide { width: 72px; }
+.zbar i.up { background: var(--up); } .zbar i.down { background: var(--down); }
+.wash { display: inline-block; min-width: 46px; text-align: right; padding: 0 5px; font: 500 12px/20px var(--font-num); font-variant-numeric: tabular-nums; }
+.legend-note { color: var(--ink-3); font: 700 11.5px var(--font-cond); letter-spacing: .04em; text-transform: uppercase; }
+.caveat { background: var(--block-2); color: var(--block-ink-2); border-left: 4px solid var(--amber); padding: 10px 14px; font: 500 12.5px/1.5 var(--font-ui); margin: 0 0 14px; }
+.caveat b { color: var(--amber); font: 700 11px/1.2 var(--font-cond); letter-spacing: .08em; text-transform: uppercase; margin-right: 8px; }
+
+/* ── Prose on the methodology tab ──────────────────────────────────────── */
+.prose h4 { font: 700 13px/1.3 var(--font-cond); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin: 16px 0 6px; }
+.prose table.data { margin: 6px 0 10px; }
+.prose ul { padding-left: 18px; }
+.disclaimer { font: 500 12px/1.6 var(--font-ui); color: var(--block-ink-3); max-width: 1000px; }
+.disclaimer b { color: var(--block-ink-2); }
+footer .page p + p { margin-top: 10px; }
+.noscript { padding: 20px; color: var(--ink-2); }
+
+/* ── Hero style index: one hue per style; on narrow screens a two-column list ───── */
+.sh-side .sh-link.sty { min-width: 150px; }
+@media (max-width: 760px) {
+  .sh-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; width: 100%; }
+  .sh-side .sh-link.sty { min-width: 0; }
+}
