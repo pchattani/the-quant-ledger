@@ -31,13 +31,13 @@ const T = {
   border: "rgba(170,190,235,0.14)", up: "#7d93ff", down: "#ff6a4d", bench: "#8e9ab0", amber: "#ffb224", ink4: "#56617a",
   sans: "\"Barlow\", system-ui, sans-serif", mono: "\"IBM Plex Mono\", ui-monospace, Consolas, monospace", cond: "\"Barlow Condensed\", \"Barlow\", sans-serif",
 };
-const FACTOR_C = { momentum: "#7d93ff", ewmom: "#a9b7ff", reversal: "#5ec8f0", value: "#ffb224", quality: "#8fd16a", investment: "#c39be8", size: "#f28fb5", lowvol: "#d9b38c", lowbeta: "#e8cfa0", dividend: "#ffd36a" };
+const FACTOR_C = { momentum: "#7d93ff", reversal: "#5ec8f0", value: "#ffb224", value_composite: "#ffd36a", quality: "#8fd16a", bab: "#d9b38c", investment: "#c39be8", size: "#f28fb5", ewmom: "#a9b7ff", lowvol: "#d9b38c", lowbeta: "#e8cfa0", dividend: "#ffd36a" };
 const MARKET_C = ["#7d93ff", "#ffb224", "#5ec8f0", "#c39be8", "#8fd16a", "#f28fb5", "#d9b38c", "#ff6a4d", "#a9b7ff", "#ffd36a", "#9ad7c8", "#e0a0ff", "#b5e07a", "#ffb5a0", "#7ad1ff", "#ffc98f", "#c8d08f", "#f0a3c9", "#8fb8ff", "#d4a37a", "#9fe3b8", "#f5c6a0"];
 const DIV = [[0, T.down], [0.5, "#1b2740"], [1, T.up]];
 const rgba = (hex, a) => { const h = hex.replace("#", ""); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
 const PLOT_CONFIG = { displaylogo: false, responsive: true, displayModeBar: "hover", modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d", "toggleSpikelines", "zoomIn2d", "zoomOut2d"] };
-const VARIANT_LABEL = { neutral_dollar: "Sector-neutral · dollar", neutral_invvol: "Sector-neutral · inverse vol", plain_dollar: "Plain · dollar", plain_invvol: "Plain · inverse vol" };
-const VARIANT_SHORT = { neutral_dollar: "Neutral · $", neutral_invvol: "Neutral · 1/σ", plain_dollar: "Plain · $", plain_invvol: "Plain · 1/σ" };
+const VARIANT_LABEL = { plain_cap: "AQR · value-weighted 2×3", neutral_dollar: "Sector-neutral · equal weight", plain_dollar: "Plain · equal weight", neutral_invvol: "Sector-neutral · inverse vol" };
+const VARIANT_SHORT = { plain_cap: "AQR · VW", neutral_dollar: "Neutral · EW", plain_dollar: "Plain · EW", neutral_invvol: "Neutral · 1/σ" };
 const WIN_LABEL = { all: "All", since_2010: "2010+", since_2021: "2021+", last_3y: "3 years", ytd: "This year" };
 
 function axis(extra = {}) {
@@ -64,9 +64,9 @@ const hline = (y, yref = "y", color = T.axis, dash = "dot") => ({ type: "line", 
 // ── State ────────────────────────────────────────────────────────────────────
 const state = {
   tab: "monitor",
-  monitor: { variant: "neutral_dollar", window: "since_2010", navwindow: "all" },
-  country: { code: null, variant: "neutral_dollar", window: "all" },
-  style: { key: "momentum", variant: "neutral_dollar" },
+  monitor: { variant: "plain_cap", window: "since_2010", navwindow: "all" },
+  country: { code: null, variant: "plain_cap", window: "all" },
+  style: { key: "momentum", variant: "plain_cap" },
   book: { id: null, window: "all", leg: "all" },
   pure: { code: null },
   access: { code: null },
@@ -189,6 +189,10 @@ const wash = (v, vmax) => !isNum(v) ? "" : `background:rgba(var(--${v < 0 ? "dow
 const washCell = (v, nd, vmax) => el("span", { class: "wash", text: fmt(v, nd, true), style: wash(v, vmax) });
 const factorTag = (k) => el("span", { class: `tag factor f-${k}`, text: fac(k).label });
 const tierBadge = (t) => el("span", { class: `tier t${t}`, text: t === 1 ? "Tier 1 · shortable" : t === 2 ? "Tier 2 · restricted" : "Tier 3 · not shortable" });
+// data-source badge: EODHD markets carry a point-in-time universe (delisted names included); Yahoo markets are today's listings
+const sourceBadge = (m) => el("span", { class: `tier src ${m.point_in_time ? "pit" : "surv"}`,
+  title: m.point_in_time ? `EODHD · universe re-struck monthly from historical market value; ${m.ever_members || "?"} names ever members, ${m.delisted_members || 0} since delisted` : "Yahoo Finance · today's listings only (survivorship-biased)",
+  text: m.point_in_time ? "EODHD · point-in-time" : "Yahoo · survivorship" });
 function zbar(v, cap, cls = "") {
   if (!isNum(v)) return txt("—");
   const span = Math.min(Math.abs(v), cap) / cap * 50;
@@ -371,7 +375,7 @@ async function initMonitor() {
   const nMk = META.market_order.length, nF = META.factor_order.length;
   const tiers = { 1: 0, 2: 0, 3: 0 };
   for (const c of META.market_order) tiers[mkt(c).tier]++;
-  $("#hero-sub").textContent = `${nF} canonical styles built the same way in ${nMk} markets (${tiers[1]} where shorting is routine, ${tiers[2]} with restrictions, ${tiers[3]} where it is not possible): top 30% long, bottom 30% short, dollar neutral, sector neutral by default, geared to 10% vol on the book's own realised PnL, net of commission, spread, stamp duty and borrow. Four constructions of every book: sector-neutral or plain, dollar- or inverse-vol-weighted.`;
+  $("#hero-sub").textContent = `${nF} styles built to the AQR definitions in ${nMk} markets (${tiers[1]} where shorting is routine, ${tiers[2]} with restrictions, ${tiers[3]} where it is not possible), on EODHD data with point-in-time universes that include the names that have since delisted. The AQR construction is a value-weighted 2×3 sort re-struck monthly, geared to 10% vol on the book's own realised PnL, net of commission, spread, stamp duty and borrow; three further constructions of every book (sector-neutral or plain, equal- or inverse-vol-weighted) are one click away.`;
   $("#hero-side").replaceChildren(...META.factor_order.map(k => el("button", { class: `sh-link sty f-${k}`, onclick: () => openStyle(k) }, [el("b", { text: fac(k).label }), el("span", { class: "n", text: fac(k).rebalance === "daily" ? `daily, ${fac(k).smoothing}-day smoothing` : `monthly, ${fac(k).smoothing}-day smoothing` })])));
   segFilter("monitor.variant", VARIANTS, () => state.monitor.variant, v => { state.monitor.variant = v; writeHash(); renderMatrix(); renderComposites(); });
   segFilter("monitor.window", Object.entries(WIN_LABEL), () => state.monitor.window, v => { state.monitor.window = v; renderMatrix(); });
@@ -478,7 +482,7 @@ async function renderCountry() {
   const code = state.country.code, vk = state.country.variant, m = mkt(code);
   $("#country-select").value = code;
   const D = await load(`country/${code}.json`);
-  $("#country-tier").replaceChildren(tierBadge(D.tier));
+  $("#country-tier").replaceChildren(tierBadge(D.tier), txt(" "), sourceBadge(D));
   $("#country-name").textContent = D.name;
   $("#country-meta").textContent = `${D.universe.n_names} names · ${dateLabel(D.universe.first)} → ${dateLabel(D.universe.last)} · quotes in ${D.currency}${D.price_unit > 1 ? ` (×1/${D.price_unit})` : ""} · MSCI lending ${D.lending} · short selling ${D.short}`;
   const def = META.default_variant;
@@ -590,7 +594,7 @@ async function renderBook() {
   $("#book-market").value = market; $("#book-factor").value = factor; $("#book-variant").value = variant;
   const D = await load(`book/${id}.json`);
   const c = FACTOR_C[factor] || T.up, ts = D.tearsheet, w = state.book.window, m = mkt(market);
-  $("#book-name").replaceChildren(txt(`${m.name} · ${fac(factor).label}`), txt(" "), tierBadge(m.tier));
+  $("#book-name").replaceChildren(txt(`${m.name} · ${fac(factor).label}`), txt(" "), tierBadge(m.tier), txt(" "), sourceBadge(m));
   $("#book-meta").textContent = `${VARIANT_LABEL[variant]} · ${dateLabel(S.start)} → ${dateLabel(S.end)} · ${fmt(ts.all.n_years, 1)} years · ${fac(factor).rebalance}, ${fac(factor).smoothing}-day smoothing`;
   $("#book-tiles").replaceChildren(
     tile("Sharpe · whole sample", fmt(ts.all.sharpe), `${pctU(ts.all.ann_ret)} a year at ${pctU(ts.all.vol)} · ± ${fmt(ts.all.se_sharpe)} s.e. · Sortino ${fmt(ts.all.sortino)}`),
@@ -681,7 +685,7 @@ async function initAccess() {
   $("#access-sub").textContent += ` Source: ${A.source}.`;
   const show = (r) => {
     state.access.code = r.code;
-    $("#access-detail-title").replaceChildren(txt(`${r.name} `), tierBadge(r.tier));
+    $("#access-detail-title").replaceChildren(txt(`${r.name} `), tierBadge(r.tier), txt(" "), sourceBadge(r));
     $("#access-detail").replaceChildren(
       el("p", {}, [el("b", { text: "Access. " }), txt(r.access || "—")]),
       el("p", {}, [el("b", { text: "MSCI 2026. " }), txt(`Stock lending ${r.lending}, short selling ${r.short}${r.msci_note ? " — " + r.msci_note : ""}.`)]),
@@ -712,11 +716,11 @@ async function initMethodology() {
 <h3>The construction</h3>
 <ul>${M.construction.map(s => `<li>${s}</li>`).join("")}</ul>
 <p>The guards a stock book needs and a futures book does not: a penny-stock floor in the market's own quote units, a liquidity floor and a market-value floor in USD (each with a 20% exit band and a one-day lag), a traded-days test, one share class per issuer, foreign and depositary listings excluded, isolated bad prints blanked and unadjusted consolidations cut from the price history, returns capped at five trailing standard deviations before any compounding indicator, characteristics winsorised at 1% a day, a 5% per-name cap, and a 10% net sector cap on the books that are not sector-neutral.</p>
-<p>Four constructions of every book are shown. <strong>Sector-neutral</strong> ranks and balances the legs inside each of Yahoo's eleven sectors (GICS names), so no sector carries a net position; <strong>plain</strong> ranks the whole market and lets the book tilt. <strong>Dollar-weighted</strong> gives every held name the same weight inside its leg; <strong>inverse-vol</strong> sizes names by 1/σ (63-day EWMA, floored at 8%) and then re-balances the legs so the book stays dollar neutral. Per-name weight is capped at ${(d.max_weight * 100).toFixed(0)}% of gross with the excess redistributed inside the leg.</p>
+<p>Four constructions of every book are shown. <strong>AQR · value-weighted 2×3</strong> follows the published factor definitions: the whole market is ranked; names are split into <em>big</em> (the largest names covering 90% of market value) and <em>small</em>; inside each group the top 30% by rank are long and the bottom 30% short, value-weighted; the factor is the average of the small and big spreads. Size is the small half minus the big half, value-weighted. Betting against beta is Frazzini &amp; Pedersen's book: rank-weighted, low-beta names long and levered to beta one, high-beta names short and de-levered to beta one, so it is beta neutral and net long in dollars. <strong>Sector-neutral</strong> ranks and balances the legs inside each GICS sector (thin sectors pooled on the day), so no sector carries a net position; <strong>plain</strong> ranks the whole market at equal weight with a 10% net sector cap; <strong>inverse-vol</strong> sizes names by 1/σ (63-day EWMA, floored at 8%) and re-balances the legs. Every book caps a name at ${(d.max_weight * 100).toFixed(0)}% of gross with the excess redistributed inside the leg.</p>
 <h3>Gearing</h3>
 <p>Each book targets ${(d.target_vol * 100).toFixed(0)}% annualised volatility: the position scalar is the target over the trailing ${d.gearing_lookback}-day realised vol of the ungeared book's PnL, lagged a day, capped at ${d.leverage_cap}× gross, and held until it has drifted ${((d.gearing_buffer || 0) * 100).toFixed(0)}% from the value in force. Backward-looking by design, and piecewise constant by design, so the book is re-geared a handful of times a year rather than daily. A diversified sector-neutral stock book runs 2-3% ungeared, so the cap is a budget for gross exposure rather than a venue limit; the gearing chart on each book's page shows where it binds. Turnover is quoted per unit of capital and, beside it, per unit of gross: the first is what the cost model charges, the second is how much the factor itself churns.</p>
 <h3>Data</h3>
-<p>Yahoo Finance only. Daily adjusted closes (total return), raw closes in quote units, volume, dividends and splits per name; the screener for the universe; one profile per name for country, sector and industry; four or five annual and up to seven quarterly statements per company for the fundamental characteristics. Prices run from 2000 in most markets; the <strong>fundamental styles start around 2021</strong> because that is all the statement history the feed serves. A statement is usable ${"from its period end plus a per-market lag (60 to 90 days)"} until the weekly point-in-time archive has recorded when it actually appeared. Universes are today's listings: <strong>every book is survivorship-biased</strong>, which flatters the long leg and the short leg alike and the momentum books most.</p>
+<p>EODHD. Daily adjusted and raw closes, volume, dividends and splits for every common stock ever listed on each market's exchanges, delisted names included; annual and quarterly statements with filing dates (believed where they are real: the US; elsewhere the period end plus a per-market lag); shares outstanding restated to today's terms and split-adjusted back; FX from 1971-1985. The closes are repaired at build time (EODHD's sentinels, one-day spikes, adjusted-only jumps and scale breaks beyond +100%/−75% in a day are removed; a genuine move beyond those bounds is lost with them). <strong>The universe is point in time</strong>: each month end the top N names by market value as it then stood, one share class per issuer, so a name that later shrank or went bust is in the history for the months it belonged and no book is survivorship-biased. The fundamental styles start where twenty names have statements, 1995-2006 in the developed markets and 2005-2012 in the emerging ones. Quality's growth component needs five years of statements and starts later.</p>
 <h3>Costs</h3>
 <p>Commission plus half the spread on every unit traded, stamp duty or a financial-transaction tax on the leg it falls on (London 0.5% on purchases, Hong Kong 0.1% each side, Taiwan 0.3% on sales, and so on), and a flat borrow rate on the short notional, all per market from the table on the access tab. No market impact: capacity is a separate question.</p>
 <h3>Windows and errors</h3>

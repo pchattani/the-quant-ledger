@@ -91,3 +91,7 @@ footer .page p + p { margin-top: 10px; }
   .sh-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; width: 100%; }
   .sh-side .sh-link.sty { min-width: 0; }
 }
+
+/* data-source badges */
+.tier.src.pit { background: rgba(66, 160, 120, 0.16); color: #7fd3a8; border-color: rgba(66, 160, 120, 0.4); }
+.tier.src.surv { background: rgba(200, 150, 60, 0.14); color: #e2b36a; border-color: rgba(200, 150, 60, 0.4); }
