@@ -13,6 +13,7 @@
 .f-momentum { --c: var(--f-momentum); } .f-ewmom { --c: var(--f-ewmom); } .f-reversal { --c: var(--f-reversal); } .f-value { --c: var(--f-value); }
 .f-quality { --c: var(--f-quality); } .f-investment { --c: var(--f-investment); } .f-size { --c: var(--f-size); } .f-lowvol { --c: var(--f-lowvol); }
 .f-lowbeta { --c: var(--f-lowbeta); } .f-dividend { --c: var(--f-dividend); }
+.f-low_beta { --c: var(--f-lowvol); } .f-value_composite { --c: var(--f-dividend); }
 .tag.factor { color: var(--c, var(--ink-2)); background: color-mix(in srgb, var(--c, var(--s-3)) 16%, transparent); }
 .dot { display: inline-block; width: 9px; height: 9px; background: var(--c, var(--axis)); margin-right: 7px; vertical-align: 0; }
 
