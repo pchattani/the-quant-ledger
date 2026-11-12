@@ -70,12 +70,13 @@ const state = {
   book: { id: null, window: "all", leg: "all" },
   pure: { code: null },
   research: { code: null, family: "headline", factor: null, measure: "ic_t" },
+  portfolio: { code: "US" },
   access: { code: null },
 };
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   if (p.get("tab")) state.tab = p.get("tab");
-  if (p.get("market")) { state.country.code = p.get("market"); state.pure.code = p.get("market"); state.research.code = p.get("market"); }
+  if (p.get("market")) { state.country.code = p.get("market"); state.pure.code = p.get("market"); state.research.code = p.get("market"); state.portfolio.code = p.get("market"); }
   if (p.get("style")) state.style.key = p.get("style");
   if (p.get("variant")) { state.monitor.variant = p.get("variant"); state.country.variant = p.get("variant"); state.style.variant = p.get("variant"); }
   if (p.get("book")) state.book.id = p.get("book");
@@ -89,6 +90,7 @@ function writeHash() {
   if (state.tab === "book" && state.book.id) p.set("book", state.book.id);
   if (state.tab === "pure" && state.pure.code) p.set("market", state.pure.code);
   if (state.tab === "research" && state.research.code) p.set("market", state.research.code);
+  if (state.tab === "portfolio" && state.portfolio.code) p.set("market", state.portfolio.code);
   try { history.replaceState(null, "", "#" + p.toString()); } catch (_) { /* sandboxed */ }
 }
 
@@ -333,7 +335,7 @@ const emptyFig = (msg, height = 300) => ({ data: [], layout: L({ height, annotat
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 const inited = {};
-const INIT = { monitor: initMonitor, country: initCountry, style: initStyle, book: initBook, research: initResearch, pure: initPure, access: initAccess, methodology: initMethodology };
+const INIT = { monitor: initMonitor, country: initCountry, style: initStyle, book: initBook, research: initResearch, portfolio: initPortfolio, pure: initPure, access: initAccess, methodology: initMethodology };
 async function showTab(tab, { push = true } = {}) {
   if (!INIT[tab]) tab = "monitor";
   state.tab = tab;
@@ -346,6 +348,7 @@ async function showTab(tab, { push = true } = {}) {
   else if (tab === "book") await renderBook();
   else if (tab === "pure") await renderPure();
   else if (tab === "research") await renderResearch();
+  else if (tab === "portfolio") await renderPortfolio();
   window.dispatchEvent(new Event("resize"));
 }
 function openBook(id) { state.book.id = id; showTab("book"); }
@@ -688,6 +691,133 @@ async function renderBook() {
   $("#b-config").textContent = D.config;
 }
 
+// ── Portfolio ────────────────────────────────────────────────────────────────
+const CORE = ["core_opt", "core_equal", "core_ic"];
+const CORE_C = { core_opt: "#ffb224", core_equal: "#7d93ff", core_ic: "#8fd16a" };
+const FAM_LABEL = (k) => META.families?.[k.replace("comp_", "")] || fac(k).label || k;
+const holdoutShape = (dates) => dates && dates.length && dates[dates.length - 1] >= "2024-01-01"
+  ? [{ type: "rect", xref: "x", yref: "paper", x0: "2024-01-01", x1: dates[dates.length - 1], y0: 0, y1: 1, fillcolor: rgba(T.amber, 0.07), line: { width: 0 }, layer: "below" }] : [];
+let PF_HAVE = new Set();
+async function initPortfolio() {
+  let B = null;
+  try { B = await load("portfolio/board.json"); } catch (_) { B = null; }
+  const have = new Set(B?.markets || []);
+  PF_HAVE = have;
+  const sel = $("#portfolio-select");
+  sel.replaceChildren(el("option", { value: "GLOBAL", text: "Global · every market at equal risk" }),
+    ...META.market_order.filter(c => have.has(c)).map(c => el("option", { value: c, text: `${c} · ${mkt(c).name}` })));
+  sel.value = have.has(state.portfolio.code) ? state.portfolio.code : "GLOBAL";
+  sel.addEventListener("change", () => { state.portfolio.code = sel.value; writeHash(); renderPortfolio(); });
+  renderPortfolioBoard(B);
+  await renderPortfolio();
+}
+function renderPortfolioBoard(B) {
+  if (!B || !B.rows) { $("#portfolio-board").replaceChildren(el("p", { class: "empty", text: "Not built yet" })); return; }
+  const cols = [
+    { key: "market", label: "Market", render: (v) => el("span", {}, [el("b", { text: v }), txt(" " + mkt(v).name)]) },
+    { key: "opt_sr", label: "Optimised", num: true, title: "Net Sharpe of the optimised book", render: v => washCell(v, 2, 1.0) },
+    { key: "opt_holdout", label: "2024+", num: true, render: v => signed(v, 2) },
+    { key: "equal_sr", label: "Equal blend", num: true, title: "Net Sharpe of the families at equal weight", render: v => washCell(v, 2, 1.0) },
+    { key: "equal_holdout", label: "2024+", num: true, render: v => signed(v, 2) },
+    { key: "ic_sr", label: "IC blend", num: true, title: "Net Sharpe of the families weighted by IC", render: v => washCell(v, 2, 1.0) },
+    { key: "best_single", label: "Best single", num: true, title: "Highest net Sharpe of any one factor's sector-neutral book in the market", render: (v, r) => el("span", { title: r.best_single_factor ? fac(r.best_single_factor).label : "" , text: fmt(v, 2) }) },
+    { key: "turnover", label: "Turnover", num: true, title: "Optimised book: one-way, times capital, a year", render: v => txt(isNum(v) ? fmt(v, 1) + "×" : "—") },
+    { key: "cost_bps", label: "Cost bps", num: true, title: "Optimised book: costs charged, bps of capital a year", render: v => txt(isNum(v) ? fmt(v, 0) : "—") },
+    { key: "capacity_m", label: "Capacity $m", num: true, title: "Capital at which square-root impact (Y = 1) halves the optimised book's Sharpe, last five years", render: v => txt(isNum(v) ? Math.round(v).toLocaleString() : ">10,000") },
+    { key: "specific", label: "Specific risk", num: true, title: "Share of the optimised book's forecast variance that is stock-specific, today", render: v => txt(isNum(v) ? pctU(v, 0) : "—") },
+    { key: "bias", label: "Bias", num: true, title: "Risk model: realised over forecast for random long-short books (one is right)", nd: 2 },
+  ];
+  sortableTable($("#portfolio-board"), cols, B.rows, { sortKey: "opt_sr", desc: true, onRow: r => { state.portfolio.code = r.market; $("#portfolio-select").value = r.market; writeHash(); renderPortfolio(); }, current: r => r.market === state.portfolio.code });
+}
+async function renderPortfolio() {
+  const code = state.portfolio.code;
+  $("#portfolio-select").value = code;
+  for (const tr of $$("#portfolio-board tbody tr")) tr.removeAttribute("aria-current");
+  if (code === "GLOBAL") return renderPortfolioGlobal();
+  if (!PF_HAVE.has(code)) return renderPortfolioGlobal(`${code} · ${mkt(code).name} has no optimised book: its universe stays under the optimiser's 40-name floor, or the book has under a year of history. The global books are shown.`);
+  let D = null;
+  try { D = await load(`portfolio/${code}.json`); } catch (_) { D = null; }
+  const ids = CORE.map(k => bookId(code, k, "neutral_dollar"));
+  const S = ids.map(id => MX.summaries[id]);
+  const navs = await Promise.all(ids.map(id => MX.summaries[id] ? load(`book/${id}.json`).catch(() => null) : Promise.resolve(null)));
+  $("#portfolio-note").textContent = D ? `risk model ${D.n_factors} factors (${D.n_sectors} sectors, ${D.styles.length} styles) · optimised monthly from ${dateLabel(D.first_book)}` : "not built for this market";
+  const o = S[0]?.sr || {}, e = S[1]?.sr || {};
+  const r = D?.risk_today || {};
+  $("#portfolio-tiles").replaceChildren(
+    tile("Optimised, net", fmt(o.all, 2), `Sharpe over ${fmt(S[0]?.years, 0)} years · ${fmt(o.since_2021, 2)} since 2021`, { cls: upDown(o.all) }),
+    tile("Equal blend, net", fmt(e.all, 2), `the baseline with nothing fitted · ${fmt(e.since_2021, 2)} since 2021`, { cls: upDown(e.all) }),
+    tile("Families explain", isNum(D?.attribution?.r2) ? pctU(D.attribution.r2, 0) : "—", isNum(D?.attribution?.alpha_t) ? `of the optimised book's variance · alpha t ${fmt(D.attribution.alpha_t, 1)}` : ""),
+    tile("Stock-specific risk", isNum(r.share_specific) ? pctU(r.share_specific, 0) : "—", isNum(D?.risk_today_equal?.share_specific) ? `of forecast variance today · equal blend ${pctU(D.risk_today_equal.share_specific, 0)}` : "of forecast variance today"),
+    tile("Capacity", isNum(D?.capacity?.half_y1) ? `$${Math.round(D.capacity.half_y1).toLocaleString()}m` : (D?.capacity ? ">$10bn" : "—"), "where impact halves the Sharpe · Y = 1; " + (isNum(D?.capacity?.half_y05) ? `$${Math.round(D.capacity.half_y05).toLocaleString()}m at Y = 0.5` : "")),
+    tile("Turnover", isNum(D?.optimiser?.turnover) ? fmt(D.optimiser.turnover, 1) + "×" : "—", isNum(D?.optimiser?.held) ? `capital a year, one way (${fmt(D.optimiser.turnover_gross, 1)}× its gross) · ${fmt(D.optimiser.held, 0)} of ${fmt(D.optimiser.names, 0)} names held` : ""),
+  );
+  const series = navs.map((b, i) => b ? { dates: b.nav.dates, values: b.nav.nav, name: fac(CORE[i]).label, color: CORE_C[CORE[i]], width: i === 0 ? 2.2 : 1.3 } : null).filter(Boolean);
+  const dates = series.length ? series.reduce((a, s) => s.dates.length > a.length ? s.dates : a, []) : [];
+  const nf = series.length ? linesFig(series, { height: 420 }) : emptyFig("No core book for this market");
+  if (series.length) nf.layout.shapes = holdoutShape(dates);
+  mount("chart-pf-nav", nf);
+  if (!D) { for (const id of ["chart-pf-risk", "chart-pf-exposure", "chart-pf-attr", "chart-pf-capacity", "chart-pf-weights"]) mount(id, emptyFig("—")); $("#portfolio-bias").replaceChildren(); return; }
+  // risk shares through time
+  const R = D.risk;
+  const parts = [["share_specific", "Stock-specific", T.up], ["share_market", "Market", T.muted], ["share_sectors", "Sectors", "#c39be8"], ["styles", "Styles", T.amber]];
+  mount("chart-pf-risk", { data: parts.map(([k, name, c]) => ({ x: R.dates, y: (k === "styles" ? R.styles_share : R[k]).map(v => isNum(v) ? v * 100 : null), name, stackgroup: "one", mode: "lines", line: { width: 0.5, color: c }, fillcolor: rgba(c, 0.55), hovertemplate: "%{y:.0f}%<extra>" + name + "</extra>" })),
+    layout: L({ height: 340, yaxis: { ticksuffix: "%", range: [0, 100] }, shapes: holdoutShape(R.dates) }) });
+  // exposures today
+  const st = D.styles;
+  mount("chart-pf-exposure", { data: [
+      { type: "bar", orientation: "h", y: st, x: st.map(s => D.risk_today?.[`exp_${s}`]), name: "Optimised", marker: { color: CORE_C.core_opt }, hovertemplate: "%{x:.2f}<extra>optimised</extra>" },
+      { type: "bar", orientation: "h", y: st, x: st.map(s => D.risk_today_equal?.[`exp_${s}`]), name: "Equal blend", marker: { color: rgba(CORE_C.core_equal, 0.6) }, hovertemplate: "%{x:.2f}<extra>equal blend</extra>" }],
+    layout: L({ height: 340, barmode: "group", hovermode: "closest", margin: { l: 110 }, yaxis: { autorange: "reversed" }, xaxis: { zeroline: true } }) });
+  // attribution
+  const A = D.attribution;
+  if (A && A.rows) {
+    const xs = [...A.rows.map(r => FAM_LABEL(r.family)), "Unexplained (alpha)"];
+    const ys = [...A.rows.map(r => r.contribution * 100), A.alpha * 100];
+    const tt = [...A.rows.map(r => r.t), A.alpha_t];
+    mount("chart-pf-attr", { data: [{ type: "bar", x: xs, y: ys, customdata: tt, marker: { color: ys.map((v, i) => i === ys.length - 1 ? T.amber : v < 0 ? T.down : T.up) }, hovertemplate: "%{y:.2f}% a year<br>t %{customdata:.1f}<extra>%{x}</extra>" }],
+      layout: L({ height: 340, showlegend: false, hovermode: "closest", yaxis: { ticksuffix: "%" }, xaxis: { tickangle: -30 }, shapes: [hline(0)] }) });
+  } else mount("chart-pf-attr", emptyFig("Too little history"));
+  // capacity
+  const C = D.capacity;
+  if (C && C.y1) {
+    $("#portfolio-cap-ctx").textContent = `net Sharpe after square-root market impact · ${dateLabel(C.start)} → ${dateLabel(C.end)} · ${fmt(C.sr_before, 2)} before impact`;
+    mount("chart-pf-capacity", { data: [
+        { x: C.y1.map(r => r.aum_usd_m), y: C.y1.map(r => r.sr_net), customdata: C.y1.map(r => r.impact_bps), mode: "lines+markers", name: "Y = 1", line: { color: T.down, width: 2 }, hovertemplate: "$%{x:,}m: Sharpe %{y:.2f}<br>impact %{customdata:.0f} bps a year<extra>Y = 1</extra>" },
+        { x: C.y05.map(r => r.aum_usd_m), y: C.y05.map(r => r.sr_net), customdata: C.y05.map(r => r.impact_bps), mode: "lines+markers", name: "Y = 0.5", line: { color: T.amber, width: 1.5, dash: "dot" }, hovertemplate: "$%{x:,}m: Sharpe %{y:.2f}<br>impact %{customdata:.0f} bps a year<extra>Y = 0.5</extra>" }],
+      layout: L({ height: 340, hovermode: "closest", xaxis: { type: "log", title: { text: "capital, $m", font: { size: 11, color: T.muted } } }, yaxis: { zeroline: true }, shapes: [hline(0), hline(C.sr_before, "y", T.muted, "dash")] }) });
+  } else mount("chart-pf-capacity", emptyFig("Not measured"));
+  // family weights
+  const W = D.weights;
+  mount("chart-pf-weights", W && W.dates?.length ? { data: Object.keys(W.families).map((k, i) => ({ x: W.dates, y: W.families[k].map(v => v * 100), name: FAM_LABEL(k), stackgroup: "w", mode: "lines", line: { width: 0.5, color: fcol(k) || MARKET_C[i] }, hovertemplate: "%{y:.0f}%<extra>" + FAM_LABEL(k) + "</extra>" })),
+    layout: L({ height: 340, yaxis: { ticksuffix: "%", range: [0, 100] } }) } : emptyFig("—"));
+  // bias
+  buildBiasTable(D.bias);
+}
+function buildBiasTable(rows) {
+  if (!rows || !rows.length) { $("#portfolio-bias").replaceChildren(el("p", { class: "empty", text: "—" })); return; }
+  const lbl = (b) => b.startsWith("book ") ? fac(b.slice(5)).label + " book" : b;
+  $("#portfolio-bias").replaceChildren(buildTable([
+    { key: "book", label: "Portfolio", render: v => txt(lbl(v)) },
+    { key: "bias", label: "Bias", num: true, render: v => el("span", { class: "wash", text: fmt(v, 2), style: wash(isNum(v) ? -Math.abs(v - 1) * 3 : null, 1) }) },
+    { key: "months", label: "Months", num: true, nd: 0 },
+    { key: "portfolios", label: "Portfolios", num: true, nd: 0 }], rows),
+    el("p", { class: "note", text: "Above one the model understates the risk, below one it overstates it; with 280 months the band of chance is about 0.92 to 1.08." }));
+}
+function renderPortfolioGlobal(why = null) {
+  const C = MX.composites?.neutral_dollar?.factors || {};
+  $("#portfolio-select").value = "GLOBAL";
+  $("#portfolio-note").textContent = why || "each market's book at 10% vol, averaged at equal weight and scaled to 10% over its whole history";
+  const keys = CORE.filter(k => C[k]);
+  $("#portfolio-tiles").replaceChildren(...keys.map(k => tile(fac(k).label, fmt(C[k].tearsheet.all?.sharpe, 2), `${C[k].n} markets · ${fmt(C[k].tearsheet.since_2021?.sharpe, 2)} since 2021`, { cls: upDown(C[k].tearsheet.all?.sharpe), spark: C[k].spark })));
+  const series = keys.map((k, i) => ({ dates: C[k].nav.dates, values: C[k].nav.nav, name: fac(k).label, color: CORE_C[k], width: i === 0 ? 2.2 : 1.3 }));
+  const dates = series.length ? series.reduce((a, s) => s.dates.length > a.length ? s.dates : a, []) : [];
+  const nf = series.length ? linesFig(series, { height: 420 }) : emptyFig("Not built yet");
+  if (series.length) nf.layout.shapes = holdoutShape(dates);
+  mount("chart-pf-nav", nf);
+  for (const id of ["chart-pf-risk", "chart-pf-exposure", "chart-pf-attr", "chart-pf-capacity", "chart-pf-weights"]) mount(id, emptyFig("Per market: choose one above", 340));
+  $("#portfolio-bias").replaceChildren(el("p", { class: "empty", text: "Per market: choose one above" }));
+}
+
 // ── Pure factors ─────────────────────────────────────────────────────────────
 // ── Research ─────────────────────────────────────────────────────────────────
 const R_MEASURES = [["ic_t", "IC t-stat"], ["t_net", "Book t-stat"], ["alpha_t", "Alpha t-stat"]];
@@ -891,6 +1021,11 @@ async function initMethodology() {
     ["g-capacity", "Capacity", "The capital at which the book's average dollar sits in a position equal to 10% of that name's daily traded value (the 63-day average, lagged a day), at the median of the last three years. A scale, not a limit: the impact of trading is not modelled."],
     ["g-spanning", "Spanning alpha", "The intercept of a regression of the book's daily gross return on the market and the momentum, value, quality, low-beta and size books of the same market and construction (the factor's own book left out), with Newey-West standard errors. A factor that is a known style again has a high R² and no alpha."],
     ["g-hurdle", "The hurdle of 3", "With many factors tried, some clear a t-statistic of 2 by chance. The scoreboard marks 3, counts how many clear it, and shows beside that the number chance alone would give. The window from 2024 is a holdout: reported, never used to choose a definition."],
+    ["g-riskmodel", "Risk model", "Every day the returns of the universe are regressed on a market term, sector dummies (summing to zero) and ten standardised styles (beta, momentum, size, book-to-price, earnings yield, profitability, investment, leverage, volatility, liquidity), weighted by the square root of market value. The factor covariance is an exponentially weighted average of the daily factor returns (half-life six months, three years of data, Newey-West for serial correlation); each name's specific variance is the same average of its residual, shrunk a quarter of the way to the median. A book's risk is split by each source's exposure times its marginal contribution, so the shares add to one."],
+    ["g-bias", "Bias statistic", "A book's return over the next 21 sessions divided by the volatility the model forecast for it, collected every month-end; the standard deviation of that ratio is one if the forecasts are right. Shown for random long-short and long-only books, the market and the style books."],
+    ["g-optimiser", "The optimiser", "Each month-end: maximise expected return less half the risk aversion times the forecast variance less trading cost (commission, half spread and stamp, spread over a six-month holding) and borrow, subject to zero net dollars, zero net in every sector, zero beta, and each name within 5% of capital or one day's traded value at $100m. Expected return is the IC-weighted family score times the name's specific volatility times the score's own past IC (Grinold). Risk aversion is set so the forecast volatility is 10%. The book is then traded by the same engine as every other book: smoothed, geared to 10% realised volatility and charged costs."],
+    ["g-attribution", "Attribution", "The optimised book's daily gross return regressed on the sector-neutral books of each family composite in the same market, with Newey-West errors: a family's contribution is its slope times that book's mean return, a year. The intercept is what the combination earns beyond holding the families."],
+    ["g-impact", "Market impact", "On top of the costs every book already pays, each trade is charged Y × the name's daily volatility × √(trade value / daily traded value) per unit traded: the square-root law (Torre 1997; Almgren et al. 2005; Tóth et al. 2011 find Y of order one). Shown at Y = 1 and at Y = 0.5 over the last five years, so the traded values are today's. Capacity is the capital at which the Sharpe ratio falls to half its value before impact."],
     ["g-tier", "Tier", "1: stock lending is deep and shorting routine (MSCI ++/++). 2: allowed with restrictions (eligible lists, registration, reporting). 3: restricted or banned; the short leg cannot be traded and the book is a measurement."],
     ["g-adv", "ADV", "63-day mean of traded value in USD (price × volume × FX, lagged a day). A name enters the universe above the market's floor and leaves 20% below it."],
     ["g-pit", "Point in time", "A statement value is usable from max(period end + lag, first seen in the archive). Before the archive, the lag convention governs; the archive snapshots every table weekly."],

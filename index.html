@@ -37,6 +37,7 @@
     <button class="tab" role="tab" data-tab="style" aria-selected="false" aria-controls="tab-style">Style</button>
     <button class="tab" role="tab" data-tab="book" aria-selected="false" aria-controls="tab-book">Book</button>
     <button class="tab" role="tab" data-tab="research" aria-selected="false" aria-controls="tab-research">Research</button>
+    <button class="tab" role="tab" data-tab="portfolio" aria-selected="false" aria-controls="tab-portfolio">Portfolio</button>
     <button class="tab" role="tab" data-tab="pure" aria-selected="false" aria-controls="tab-pure">Pure factors</button>
     <button class="tab" role="tab" data-tab="access" aria-selected="false" aria-controls="tab-access">Markets &amp; access</button>
     <button class="tab" role="tab" data-tab="methodology" aria-selected="false" aria-controls="tab-methodology">Methodology</button>
@@ -266,7 +267,61 @@
   </div>
 </section>
 
-<!-- ── Pure factors ────────────────────────────────────────────────────── -->
+<!-- ── Portfolio ───────────────────────────────────────────────────────── -->
+<section id="tab-portfolio" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">Portfolio</span><h2 class="sh-title">One book per market, built to be held</h2><p class="sh-sub">The family scores combined into one alpha (at equal weight, and weighted by each family's past rank IC), and that alpha turned into a book by an optimiser: expected return less risk less the market's trading and borrow costs, neutral to the dollar, every sector and beta, each name capped at 5% or a day's traded value at $100m. Risk comes from a market, sector and ten-style model estimated on past returns only. Research and paper only: no broker is connected.</p></div>
+  </div>
+  <div class="sel-row">
+    <span class="filter-label">Market</span>
+    <select class="ctl" id="portfolio-select" aria-label="Market"></select>
+    <span class="note" style="margin:0" id="portfolio-note"></span>
+  </div>
+  <div class="tiles" id="portfolio-tiles"></div>
+  <div class="grid">
+    <figure class="card" data-chart="pf_nav">
+      <figcaption><h3>The three core books <span class="ctx" id="portfolio-nav-ctx">growth of 100 at 10% vol, net of costs · log · shaded from 2024: the holdout</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-pf-nav"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="pf_risk">
+      <figcaption><h3>Where the risk comes from <span class="ctx">optimised book as held · share of forecast variance · month-ends</span></h3>
+        <div class="card-tools"><a class="glossary-link" href="#tab=methodology&g=g-riskmodel">ⓘ</a><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-pf-risk"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="pf_exposure">
+      <figcaption><h3>Style exposures today <span class="ctx">standardised · the optimised book against the equal-weight blend</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-pf-exposure"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="pf_attr">
+      <figcaption><h3>Where the return comes from <span class="ctx">gross return on the family books · % a year · what they leave is the combination's alpha</span></h3>
+        <div class="card-tools"><a class="glossary-link" href="#tab=methodology&g=g-attribution">ⓘ</a><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-pf-attr"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="pf_capacity">
+      <figcaption><h3>How much money it takes <span class="ctx" id="portfolio-cap-ctx">net Sharpe after square-root market impact · last five years</span></h3>
+        <div class="card-tools"><a class="glossary-link" href="#tab=methodology&g=g-impact">ⓘ</a><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-pf-capacity"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="pf_weights">
+      <figcaption><h3>How the families are weighted <span class="ctx">the IC-weighted alpha · set each January from the months known by then</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-pf-weights"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="pf_bias">
+      <figcaption><h3>Is the risk model right? <span class="ctx">realised over forecast, next 21 sessions, month-ends · one is right</span></h3>
+        <div class="card-tools"><a class="glossary-link" href="#tab=methodology&g=g-bias">ⓘ</a></div></figcaption>
+      <div class="tablewrap" id="portfolio-bias"></div>
+    </figure>
+    <figure class="card" data-chart="pf_board">
+      <figcaption><h3>Every market <span class="ctx">sector-neutral · net Sharpe over each book's whole history and in the 2024+ holdout · select a row to open the market</span></h3></figcaption>
+      <div class="tablewrap" id="portfolio-board"></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Pure factors ──────────────────────────────────────────────────────── -->
 <section id="tab-pure" class="panel" role="tabpanel" hidden>
   <div class="sh">
     <div class="sh-main"><span class="kicker">Pure factors</span><h2 class="sh-title">The risk model's view</h2><p class="sh-sub">A characteristic factor model after toraniko: every day the cross-section of stock returns is regressed on sector dummies (constrained to sum to zero) and standardised style scores, weighted by the square root of market value. The coefficients are the return to one unit of a style with everything else held at zero. The long/short books are then regressed on them: what each book really loads on, and what is left.</p></div>
