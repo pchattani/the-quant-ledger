@@ -64,8 +64,8 @@ const hline = (y, yref = "y", color = T.axis, dash = "dot") => ({ type: "line", 
 // ── State ────────────────────────────────────────────────────────────────────
 const state = {
   tab: "monitor",
-  monitor: { variant: "plain_cap", window: "since_2010", navwindow: "all" },
-  country: { code: null, variant: "plain_cap", window: "all" },
+  monitor: { variant: "plain_cap", window: "since_2010", navwindow: "all", family: "headline" },
+  country: { code: null, variant: "plain_cap", window: "all", family: "headline" },
   style: { key: "momentum", variant: "plain_cap" },
   book: { id: null, window: "all", leg: "all" },
   pure: { code: null },
@@ -102,7 +102,30 @@ let META, MX;
 const mkt = (c) => META.markets[c] || { code: c, name: c, tier: 3 };
 const fac = (k) => META.factors[k] || { key: k, label: k };
 const bookId = (m, f, v) => `eq_${m}_${f}_${v}`;
-const parseBook = (id) => { const p = id.split("_"); return { market: p[1], factor: p[2], variant: `${p[3]}_${p[4]}` }; };
+const parseBook = (id) => { const p = id.split("_"); return { market: p[1], factor: p.slice(2, -2).join("_"), variant: p.slice(-2).join("_") }; };
+// families: "headline" is the eight original styles; every other key is a family of the factor file
+const famOf = (k) => fac(k).family || "other";
+const famLabel = (f) => f === "headline" ? "Headline styles" : (META.families?.[f] || f);
+const famFactors = (f) => META.factor_order.filter(k => f === "headline" ? fac(k).headline : famOf(k) === f);
+const famOptions = () => [["headline", "Headline styles"], ...Object.keys(META.families || {}).map(k => [k, META.families[k]])];
+function fcol(k) {
+  if (FACTOR_C[k]) return FACTOR_C[k];
+  const peers = META.factor_order.filter(x => famOf(x) === famOf(k) && !FACTOR_C[x]);
+  return MARKET_C[Math.max(0, peers.indexOf(k)) % MARKET_C.length];
+}
+function familySelect(sel, get, set) {
+  sel.replaceChildren(...famOptions().map(([k, l]) => el("option", { value: k, text: `${l} (${famFactors(k).length})` })));
+  sel.value = get();
+  sel.addEventListener("change", () => set(sel.value));
+}
+function factorOptions() {
+  return Object.keys(META.families || {}).map(f => el("optgroup", { label: META.families[f] },
+    META.factor_order.filter(k => famOf(k) === f).map(k => el("option", { value: k, text: fac(k).label }))));
+}
+function subCorr(corr, keys) {
+  const idx = keys.map(k => corr.ids.indexOf(k)).filter(i => i >= 0);
+  return { ids: idx.map(i => corr.ids[i]), matrix: idx.map(i => idx.map(j => corr.matrix[i][j])) };
+}
 const marketColor = (code) => MARKET_C[META.market_order.indexOf(code) % MARKET_C.length];
 
 // ── Figures and their table view ─────────────────────────────────────────────
@@ -187,7 +210,7 @@ const signed = (v, nd = 2) => el("span", { class: "num " + (!isNum(v) ? "" : v <
 const signedPct = (v, nd = 1) => el("span", { class: "num " + (!isNum(v) ? "" : v < 0 ? "down" : v > 0 ? "up" : ""), text: pct(v, nd) });
 const wash = (v, vmax) => !isNum(v) ? "" : `background:rgba(var(--${v < 0 ? "down" : "up"}-rgb), ${(Math.min(1, Math.abs(v) / vmax) * 0.55).toFixed(3)})`;
 const washCell = (v, nd, vmax) => el("span", { class: "wash", text: fmt(v, nd, true), style: wash(v, vmax) });
-const factorTag = (k) => el("span", { class: `tag factor f-${k}`, text: fac(k).label });
+const factorTag = (k) => el("span", { class: `tag factor f-${k}`, text: fac(k).label, style: `--c:${fcol(k)}` });
 const tierBadge = (t) => el("span", { class: `tier t${t}`, text: t === 1 ? "Tier 1 · shortable" : t === 2 ? "Tier 2 · restricted" : "Tier 3 · not shortable" });
 // data-source badge: EODHD markets carry a point-in-time universe (delisted names included); Yahoo markets are today's listings
 const sourceBadge = (m) => el("span", { class: `tier src ${m.point_in_time ? "pit" : "surv"}`,
@@ -255,7 +278,7 @@ function sparkSvg(values, { w = 100, h = 22, cls = "spark", zeroAt = null } = {}
 function tile(label, value, sub, { cls = "", spark = null, zeroAt = null } = {}) {
   return el("div", { class: "tile" }, [
     el("span", { class: "label eyebrow", text: label }),
-    el("span", { class: "value " + cls, text: value }),
+    el("span", { class: "value " + cls + (String(value).length > 11 ? " long" : ""), text: value }),
     el("span", { class: "delta", text: sub || "" }),
     spark ? sparkSvg(spark, { zeroAt }) : null,
   ]);
@@ -375,8 +398,11 @@ async function initMonitor() {
   const nMk = META.market_order.length, nF = META.factor_order.length;
   const tiers = { 1: 0, 2: 0, 3: 0 };
   for (const c of META.market_order) tiers[mkt(c).tier]++;
-  $("#hero-sub").textContent = `${nF} styles built to the published academic definitions in ${nMk} markets (${tiers[1]} where shorting is routine, ${tiers[2]} with restrictions, ${tiers[3]} where it is not possible), on EODHD data with point-in-time universes that include the names that have since delisted. The cap-weighted construction is a value-weighted 2×3 sort re-struck monthly, geared to 10% vol on the book's own realised PnL, net of commission, spread, stamp duty and borrow; three further constructions of every book (sector-neutral or plain, equal- or inverse-vol-weighted) are one click away.`;
-  $("#hero-side").replaceChildren(...META.factor_order.map(k => el("button", { class: `sh-link sty f-${k}`, onclick: () => openStyle(k) }, [el("b", { text: fac(k).label }), el("span", { class: "n", text: fac(k).rebalance === "daily" ? `daily, ${fac(k).smoothing}-day smoothing` : `monthly, ${fac(k).smoothing}-day smoothing` })])));
+  $("#hero-sub").textContent = `${nF} factors in ${Object.keys(META.families || {}).length} families, built to the published academic definitions in ${nMk} markets (${tiers[1]} where shorting is routine, ${tiers[2]} with restrictions, ${tiers[3]} where it is not possible), on EODHD data with point-in-time universes that include the names that have since delisted. The cap-weighted construction is a value-weighted 2×3 sort re-struck monthly, geared to 10% vol on the book's own realised PnL, net of commission, spread, stamp duty and borrow; every factor is also built sector-neutral at equal weight, and the headline styles and family composites in two further constructions.`;
+  const setFamily = (f) => { state.monitor.family = f; $("#monitor-family").value = f; renderMatrix(); renderComposites(); };
+  $("#hero-side").replaceChildren(...Object.keys(META.families || {}).map(f => el("button", { class: "sh-link sty", onclick: () => { setFamily(f); $("#matrix").scrollIntoView({ behavior: "smooth", block: "center" }); } },
+    [el("b", { text: META.families[f] }), el("span", { class: "n", text: `${famFactors(f).length} factors` })])));
+  familySelect($("#monitor-family"), () => state.monitor.family, setFamily);
   segFilter("monitor.variant", VARIANTS, () => state.monitor.variant, v => { state.monitor.variant = v; writeHash(); renderMatrix(); renderComposites(); });
   segFilter("monitor.window", Object.entries(WIN_LABEL), () => state.monitor.window, v => { state.monitor.window = v; renderMatrix(); });
   segFilter("monitor.navwindow", WINDOWS, () => state.monitor.navwindow, v => { state.monitor.navwindow = v; renderCompNav(); });
@@ -391,35 +417,38 @@ function renderKpis() {
   srs.sort((a, b) => a - b);
   const med = srs.length ? srs[Math.floor(srs.length / 2)] : null;
   const pos21 = []; for (const c of META.market_order) for (const f of META.factor_order) { const v = cells[c]?.[f]?.sr?.since_2021; if (isNum(v)) pos21.push(v > 0 ? 1 : 0); }
-  const best = Object.entries(comps).map(([k, c]) => [k, c.tearsheet.since_2010?.sharpe ?? c.tearsheet.all?.sharpe]).filter(([, v]) => isNum(v)).sort((a, b) => b[1] - a[1])[0];
-  const worst = Object.entries(comps).map(([k, c]) => [k, c.tearsheet.since_2010?.sharpe ?? c.tearsheet.all?.sharpe]).filter(([, v]) => isNum(v)).sort((a, b) => a[1] - b[1])[0];
+  // a style built in a handful of markets is not a global composite: ten markets or more
+  const broad = Object.entries(comps).filter(([, c]) => (c.n || 0) >= 10).map(([k, c]) => [k, c.tearsheet.since_2010?.sharpe ?? c.tearsheet.all?.sharpe, c.n]).filter(([, v]) => isNum(v));
+  const best = broad.slice().sort((a, b) => b[1] - a[1])[0];
+  const worst = broad.slice().sort((a, b) => a[1] - b[1])[0];
   const names = META.market_order.reduce((a, c) => a + (mkt(c).n_names || 0), 0);
   $("#kpis").replaceChildren(
-    tile("Books", String(META.n_books), `${META.market_order.length} markets × ${META.factor_order.length} styles × 4 constructions`),
+    tile("Books", String(META.n_books), `${META.market_order.length} markets × ${META.factor_order.length} factors, two to four constructions each`),
     tile("Names priced", names.toLocaleString(), `across the built markets · ADV floors from $0.5m to $5m a day`),
     tile("Median cell Sharpe", fmt(med), `sector-neutral, dollar-weighted · since 2010 · ${srs.length} cells`, { cls: upDown(med) }),
     tile("Cells positive since 2021", pos21.length ? pctU(pos21.reduce((a, b) => a + b, 0) / pos21.length, 0) : "—", `the window the fundamental styles cover · ${pos21.length} cells`),
-    tile("Best style", best ? fac(best[0]).label : "—", best ? `global composite Sharpe ${fmt(best[1])} since 2010` : "", { cls: "up", spark: best ? comps[best[0]].spark : null }),
-    tile("Weakest style", worst ? fac(worst[0]).label : "—", worst ? `global composite Sharpe ${fmt(worst[1])} since 2010` : "", { cls: "down", spark: worst ? comps[worst[0]].spark : null }),
+    tile("Best style", best ? fac(best[0]).label : "—", best ? `${best[2]}-market composite · Sharpe ${fmt(best[1])} since 2010` : "", { cls: "up", spark: best ? comps[best[0]].spark : null }),
+    tile("Weakest style", worst ? fac(worst[0]).label : "—", worst ? `${worst[2]}-market composite · Sharpe ${fmt(worst[1])} since 2010` : "", { cls: "down", spark: worst ? comps[worst[0]].spark : null }),
   );
 }
 function renderMatrix() {
   const vk = state.monitor.variant, w = state.monitor.window, cells = MX.variants[vk];
+  const FL = famFactors(state.monitor.family).filter(f => (fac(f).variants || [vk]).includes(vk));
   const isYtd = w === "ytd";
   $("#matrix-ctx").textContent = isYtd ? "return this year, % of capital at 10% vol · select a cell to open the book · hatched = not shortable"
     : `Sharpe ratio ${WIN_LABEL[w].toLowerCase()}, net of costs · select a cell to open the book · hatched = not shortable`;
   const table = el("table", { class: "data" });
-  table.append(el("thead", {}, el("tr", {}, [el("th", { text: "Market" }), ...META.factor_order.map(f => el("th", { class: "n", text: fac(f).label }))])));
+  table.append(el("thead", {}, el("tr", {}, [el("th", { text: "Market" }), ...FL.map(f => el("th", { class: "n", text: fac(f).label }))])));
   const byTier = [1, 2, 3].map(t => META.market_order.filter(c => mkt(c).tier === t));
   const body = el("tbody");
   let n = 0;
   byTier.forEach((codes, i) => {
     if (!codes.length) return;
-    body.append(el("tr", {}, el("td", { colspan: META.factor_order.length + 1, class: "legend-note", text: i === 0 ? "Tier 1 · shorting routine" : i === 1 ? "Tier 2 · shorting with restrictions" : "Tier 3 · not shortable: a measurement, not a product" })));
+    body.append(el("tr", {}, el("td", { colspan: FL.length + 1, class: "legend-note", text: i === 0 ? "Tier 1 · shorting routine" : i === 1 ? "Tier 2 · shorting with restrictions" : "Tier 3 · not shortable: a measurement, not a product" })));
     for (const c of codes) {
       const m = mkt(c);
       const tr = el("tr", {}, [el("td", { class: "mk" }, [el("b", { text: c }), el("small", { text: `${m.name} · ${m.n_names} names` })])]);
-      for (const f of META.factor_order) {
+      for (const f of FL) {
         const cell = cells[c]?.[f];
         const v = cell ? (isYtd ? cell.ytd : cell.sr?.[w]) : null;
         const span = el("span", { class: "cell" + (isNum(v) ? "" : " na") + (m.tier === 3 ? " measure" : ""), text: isNum(v) ? (isYtd ? pct(v, 0) : fmt(v, 2, true)) : "·", style: isNum(v) ? wash(v, isYtd ? 0.2 : 1.5) : "",
@@ -433,7 +462,7 @@ function renderMatrix() {
   });
   table.append(body);
   $("#matrix").replaceChildren(table);
-  $("#matrix-count").textContent = `${n} books · ${VARIANT_LABEL[vk]}`;
+  $("#matrix-count").textContent = `${n} books · ${famLabel(state.monitor.family)} · ${VARIANT_LABEL[vk]}`;
   $("#matrix-legend").replaceChildren(
     el("span", {}, [el("span", { class: "sw", style: wash(isYtd ? 0.2 : 1.5, isYtd ? 0.2 : 1.5) }), txt(isYtd ? "+20% or better" : "Sharpe +1.5 or better")]),
     el("span", {}, [el("span", { class: "sw", style: wash(isYtd ? -0.2 : -1.5, isYtd ? 0.2 : 1.5) }), txt(isYtd ? "−20% or worse" : "Sharpe −1.5 or worse")]),
@@ -445,8 +474,10 @@ function renderComposites() {
   const vk = state.monitor.variant, C = MX.composites[vk];
   if (!C) { mount("chart-comp-nav", emptyFig("No composites for this construction")); return; }
   renderCompNav();
-  mount("chart-comp-corr", corrFig(C.corr.ids.map(k => fac(k).label), C.corr.matrix, { height: 420 }));
-  const rows = META.factor_order.filter(k => C.factors[k]).map(k => { const c = C.factors[k]; return { key: k, label: fac(k).label, n: c.n, sr_all: c.tearsheet.all?.sharpe, sr10: c.tearsheet.since_2010?.sharpe, sr21: c.tearsheet.since_2021?.sharpe, sr3: c.tearsheet.last_3y?.sharpe, ytd: c.ytd, dd: c.tearsheet.all?.max_dd, spark: c.spark }; });
+  const FL = famFactors(state.monitor.family).filter(k => C.factors[k]);
+  const SC = subCorr(C.corr, FL);
+  mount("chart-comp-corr", SC.ids.length > 1 ? corrFig(SC.ids.map(k => fac(k).label), SC.matrix, { height: Math.max(420, 26 * SC.ids.length + 140) }) : emptyFig("One factor in this view"));
+  const rows = FL.map(k => { const c = C.factors[k]; return { key: k, label: fac(k).label, n: c.n, sr_all: c.tearsheet.all?.sharpe, sr10: c.tearsheet.since_2010?.sharpe, sr21: c.tearsheet.since_2021?.sharpe, sr3: c.tearsheet.last_3y?.sharpe, ytd: c.ytd, dd: c.tearsheet.all?.max_dd, spark: c.spark }; });
   sortableTable($("#comp-board"), [
     { key: "label", label: "Style", render: (v, r) => factorTag(r.key) }, { key: "n", label: "Markets", num: true, nd: 0 },
     { key: "sr_all", label: "Sharpe · all", num: true, render: v => washCell(v, 2, 1.5) }, { key: "sr10", label: "2010+", num: true, render: v => washCell(v, 2, 1.5) },
@@ -454,15 +485,15 @@ function renderComposites() {
     { key: "ytd", label: "This year", num: true, render: v => signedPct(v) }, { key: "dd", label: "Max DD", num: true, render: v => txt(pct(v, 0, false)) },
     { key: "spark", label: "52 weeks", render: v => sparkSvg(v || [], { w: 100, h: 20 }) },
   ], rows, { sortKey: "sr10", desc: true, onRow: r => openStyle(r.key) });
-  mount("chart-comp-breadth", { data: META.factor_order.filter(k => C.factors[k]).map(k => ({ x: C.factors[k].breadth.dates, y: C.factors[k].breadth.values, mode: "lines", name: fac(k).label, line: { color: FACTOR_C[k], width: 1.4 }, hovertemplate: "%{y}<extra>" + fac(k).label + "</extra>" })),
+  mount("chart-comp-breadth", { data: FL.map(k => ({ x: C.factors[k].breadth.dates, y: C.factors[k].breadth.values, mode: "lines", name: fac(k).label, line: { color: fcol(k), width: 1.4 }, hovertemplate: "%{y}<extra>" + fac(k).label + "</extra>" })),
     layout: L({ height: 300, yaxis: { rangemode: "tozero" } }) });
-  const years = [...new Set(Object.values(C.factors).flatMap(c => c.by_year.map(r => r.year)))].sort();
-  mount("chart-comp-years", heatYears(META.factor_order.filter(k => C.factors[k]).map(k => years.map(y => C.factors[k].by_year.find(r => r.year === y)?.ret ?? null)), META.factor_order.filter(k => C.factors[k]).map(k => fac(k).label), years));
+  const years = [...new Set(FL.flatMap(k => C.factors[k].by_year.map(r => r.year)))].sort();
+  mount("chart-comp-years", FL.length ? heatYears(FL.map(k => years.map(y => C.factors[k].by_year.find(r => r.year === y)?.ret ?? null)), FL.map(k => fac(k).label), years) : emptyFig("—"));
 }
 function renderCompNav() {
   const C = MX.composites[state.monitor.variant];
   if (!C) return;
-  const series = META.factor_order.filter(k => C.factors[k]).map(k => ({ dates: C.factors[k].nav.dates, values: C.factors[k].nav.nav, name: fac(k).label, color: FACTOR_C[k] }));
+  const series = famFactors(state.monitor.family).filter(k => C.factors[k]).map(k => ({ dates: C.factors[k].nav.dates, values: C.factors[k].nav.nav, name: fac(k).label, color: fcol(k) }));
   const dates = series.length ? series.reduce((a, s) => s.dates.length > a.length ? s.dates : a, []) : [];
   mount("chart-comp-nav", applyWindow(linesFig(series, { height: 460 }), dates, state.monitor.navwindow));
 }
@@ -474,6 +505,7 @@ async function initCountry() {
     META.market_order.filter(c => mkt(c).tier === t).map(c => el("option", { value: c, text: `${c} · ${mkt(c).name}` })))));
   sel.value = state.country.code;
   sel.addEventListener("change", () => { state.country.code = sel.value; writeHash(); renderCountry(); });
+  familySelect($("#country-family"), () => state.country.family, f => { state.country.family = f; renderCountry(); });
   segFilter("country.variant", VARIANTS, () => state.country.variant, v => { state.country.variant = v; writeHash(); renderCountry(); });
   segFilter("country.window", WINDOWS, () => state.country.window, v => { state.country.window = v; renderCountry(); });
   await renderCountry();
@@ -499,10 +531,12 @@ async function renderCountry() {
   $("#country-access").replaceChildren(el("b", { text: "What a long/short book must honour here. " }), txt(D.access), el("div", { class: "data-notes" }, [el("b", { text: "Data. " }), txt(D.data_notes || "—")]));
   $("#country-rule").replaceChildren(el("b", { text: "Universe rule" }), txt(`Top ${D.universe_rule.top_n} by market value on the market's exchanges, issuer domiciled here, one share class per issuer; then daily: 252 days of history, ADV ≥ $${D.universe_rule.adv_floor_usd_m}m (20% band), price ≥ ${D.universe_rule.price_floor} ${D.currency === "USD" ? "" : "quote units"}, at least ${D.universe_rule.min_names} names.`));
   // every style's NAV, default variant
-  const series = META.factor_order.filter(f => D.factors[f]?.[def]?.nav).map(f => ({ dates: D.factors[f][def].nav.dates, values: D.factors[f][def].nav.nav, name: fac(f).label, color: FACTOR_C[f] }));
+  const CF = famFactors(state.country.family);
+  const series = CF.filter(f => D.factors[f]?.[def]?.nav).map(f => ({ dates: D.factors[f][def].nav.dates, values: D.factors[f][def].nav.nav, name: fac(f).label, color: fcol(f) }));
   const dates = series.length ? series.reduce((a, s) => s.dates.length > a.length ? s.dates : a, []) : [];
   mount("chart-c-nav", series.length ? applyWindow(linesFig(series, { height: 460 }), dates, state.country.window) : emptyFig("No books"));
-  mount("chart-c-corr", D.corr ? corrFig(D.corr.ids.map(k => fac(k).label), D.corr.matrix, { height: 460 }) : emptyFig("—"));
+  const CC = D.corr ? subCorr(D.corr, CF) : null;      // the family on show, as in the chart beside it
+  mount("chart-c-corr", CC && CC.ids.length > 1 ? corrFig(CC.ids.map(k => fac(k).label), CC.matrix, { height: Math.max(460, 22 * CC.ids.length + 160) }) : emptyFig(CC ? "One factor in this view" : "—"));
   $("#c-board-ctx").textContent = `${VARIANT_LABEL[vk]} · Sharpe by window · select a row to open the book`;
   sortableTable($("#country-board"), [
     { key: "label", label: "Style", render: (v, r) => factorTag(r.key) },
@@ -522,8 +556,8 @@ async function renderCountry() {
   const sm = Object.entries(U.sector_mix).sort((a, b) => b[1] - a[1]);
   mount("chart-c-sectors", { data: [{ x: sm.map(r => r[0]), y: sm.map(r => r[1]), type: "bar", name: "Names", marker: { color: marketColor(code) }, hovertemplate: "%{x}: %{y}<extra></extra>" }],
     layout: L({ height: 300, showlegend: false, hovermode: "closest", xaxis: { showgrid: false, tickangle: -30, tickfont: { size: 10 } } }) });
-  const yearsAll = [...new Set(META.factor_order.flatMap(f => (D.factors[f]?.[def]?.by_year || []).map(r => r.year)))].sort();
-  const fy = META.factor_order.filter(f => D.factors[f]?.[def]?.by_year);
+  const yearsAll = [...new Set(CF.flatMap(f => (D.factors[f]?.[def]?.by_year || []).map(r => r.year)))].sort();
+  const fy = CF.filter(f => D.factors[f]?.[def]?.by_year);
   mount("chart-c-years", fy.length ? heatYears(fy.map(f => yearsAll.map(y => D.factors[f][def].by_year.find(r => r.year === y)?.ret ?? null)), fy.map(f => fac(f).label), yearsAll) : emptyFig("—"));
   const cov = Object.entries(D.coverage || {}).map(([k, v]) => ({ panel: k, first: v.first_20_names === "None" ? "—" : v.first_20_names, cov: v.coverage_1y }));
   $("#country-coverage").replaceChildren(buildTable([{ key: "panel", label: "Panel" }, { key: "first", label: "20 names from" }, { key: "cov", label: "Coverage, last year", num: true, render: v => txt(pctU(v, 0)) }], cov));
@@ -533,7 +567,7 @@ async function renderCountry() {
 // ── Style ────────────────────────────────────────────────────────────────────
 async function initStyle() {
   const sel = $("#style-select");
-  sel.replaceChildren(...META.factor_order.map(k => el("option", { value: k, text: fac(k).label })));
+  sel.replaceChildren(...factorOptions());
   sel.value = state.style.key;
   sel.addEventListener("change", () => { state.style.key = sel.value; writeHash(); renderStyle(); });
   segFilter("style.variant", VARIANTS, () => state.style.variant, v => { state.style.variant = v; writeHash(); renderStyle(); });
@@ -579,7 +613,7 @@ async function renderStyle() {
 async function initBook() {
   const m = $("#book-market"), f = $("#book-factor"), v = $("#book-variant");
   m.replaceChildren(...META.market_order.map(c => el("option", { value: c, text: `${c} · ${mkt(c).name}` })));
-  f.replaceChildren(...META.factor_order.map(k => el("option", { value: k, text: fac(k).label })));
+  f.replaceChildren(...factorOptions());
   v.replaceChildren(...Object.entries(VARIANT_LABEL).map(([k, l]) => el("option", { value: k, text: l })));
   const pick = () => { const id = bookId(m.value, f.value, v.value); if (MX.summaries[id]) { state.book.id = id; writeHash(); renderBook(); } else { $("#book-name").textContent = "Not built"; $("#book-meta").textContent = `${mkt(m.value).name} · ${fac(f.value).label} · ${VARIANT_LABEL[v.value]}: no cached run`; } };
   for (const s of [m, f, v]) s.addEventListener("change", pick);
@@ -593,7 +627,7 @@ async function renderBook() {
   const { market, factor, variant } = parseBook(id);
   $("#book-market").value = market; $("#book-factor").value = factor; $("#book-variant").value = variant;
   const D = await load(`book/${id}.json`);
-  const c = FACTOR_C[factor] || T.up, ts = D.tearsheet, w = state.book.window, m = mkt(market);
+  const c = fcol(factor) || T.up, ts = D.tearsheet, w = state.book.window, m = mkt(market);
   $("#book-name").replaceChildren(txt(`${m.name} · ${fac(factor).label}`), txt(" "), tierBadge(m.tier), txt(" "), sourceBadge(m));
   $("#book-meta").textContent = `${VARIANT_LABEL[variant]} · ${dateLabel(S.start)} → ${dateLabel(S.end)} · ${fmt(ts.all.n_years, 1)} years · ${fac(factor).rebalance}, ${fac(factor).smoothing}-day smoothing`;
   $("#book-tiles").replaceChildren(
@@ -635,7 +669,7 @@ async function renderBook() {
   ], layout: L({ height: 520, hovermode: "x", grid: { rows: 3, columns: 1, roworder: "top to bottom" }, yaxis: { domain: [0.7, 1], ticksuffix: "×" }, yaxis2: { domain: [0.37, 0.63] }, yaxis3: { domain: [0, 0.3], rangemode: "tozero" }, xaxis: { type: "category", showgrid: false }, xaxis2: { type: "category", showgrid: false, matches: "x" }, xaxis3: { showgrid: false } }) });
   const leg = state.book.leg;
   const pos = D.positions.filter(p => leg === "all" || (leg === "long" ? p.weight > 0 : p.weight < 0));
-  $("#b-pos-ctx").textContent = `${D.n_positions} positions at ${dateLabel(D.as_of)} (${D.positions.filter(p => p.weight > 0).length} long, ${D.positions.filter(p => p.weight < 0).length} short) · weight in % of capital · vol · ADV · market value · this year's P&L from the name`;
+  $("#b-pos-ctx").textContent = `${D.n_positions} positions at ${dateLabel(D.as_of)} (${D.n_long ?? D.positions.filter(p => p.weight > 0).length} long, ${D.n_short ?? D.positions.filter(p => p.weight < 0).length} short${D.positions_shown && D.n_positions > D.positions.length ? `; the ${D.positions_shown} largest a side shown` : ""}) · weight in % of capital · vol · ADV · market value · this year's P&L from the name`;
   sortableTable($("#b-positions"), [
     { key: "symbol", label: "Name", cls: "sym" }, { key: "name", label: "", cls: "nm" }, { key: "sector", label: "Sector" }, { key: "industry", label: "Industry", cls: "nm" },
     { key: "weight", label: "Weight", num: true, render: v => signedPct(v, 2) }, { key: "vol", label: "Vol", num: true, render: v => txt(pctU(v, 0)) },
@@ -665,7 +699,7 @@ async function renderPure() {
   if (!D.nav) { $("#pure-note").textContent = "not estimated for this market"; for (const id of ["chart-p-styles", "chart-p-sectors"]) mount(id, emptyFig("—")); $("#p-stats").replaceChildren(); $("#p-loadings").replaceChildren(); return; }
   $("#pure-note").textContent = `${dateLabel(D.start)} → ${dateLabel(D.end)} · square-root-of-market-value weights · styles standardised daily · ${D.styles.length} styles, ${D.sectors.length} sectors`;
   const sty = ["market", ...D.styles];
-  mount("chart-p-styles", { data: sty.map((k, i) => ({ x: D.nav.dates, y: D.nav[k], mode: "lines", name: k, line: { color: k === "market" ? T.muted : (FACTOR_C[k] || MARKET_C[i]), width: k === "market" ? 1 : 1.5 }, hovertemplate: "%{y:.2f}<extra>" + k + "</extra>" })), layout: L({ height: 420, yaxis: { type: "log" } }) });
+  mount("chart-p-styles", { data: sty.map((k, i) => ({ x: D.nav.dates, y: D.nav[k], mode: "lines", name: k, line: { color: k === "market" ? T.muted : (fcol(k) || MARKET_C[i]), width: k === "market" ? 1 : 1.5 }, hovertemplate: "%{y:.2f}<extra>" + k + "</extra>" })), layout: L({ height: 420, yaxis: { type: "log" } }) });
   mount("chart-p-sectors", { data: D.sectors.map((k, i) => ({ x: D.nav.dates, y: D.nav[k], mode: "lines", name: k, line: { color: MARKET_C[i % MARKET_C.length], width: 1.3 }, hovertemplate: "%{y:.2f}<extra>" + k + "</extra>" })), layout: L({ height: 420, yaxis: { type: "log" }, legend: { font: { size: 9.5 } } }) });
   const rows = Object.entries(D.stats).filter(([, s]) => s && s.sharpe !== undefined).map(([k, s]) => ({ k, kind: k === "market" ? "market" : D.styles.includes(k) ? "style" : "sector", ret: s.ann_ret, vol: s.vol, sharpe: s.sharpe, dd: s.max_dd, start: s.start }));
   sortableTable($("#p-stats"), [{ key: "k", label: "Factor" }, { key: "kind", label: "" }, { key: "ret", label: "Return/yr", num: true, render: v => signedPct(v) }, { key: "vol", label: "Vol", num: true, render: v => txt(pctU(v)) }, { key: "sharpe", label: "Sharpe", num: true, render: v => washCell(v, 2, 1.5) }, { key: "dd", label: "Max DD", num: true, render: v => txt(pct(v, 0, false)) }, { key: "start", label: "From" }], rows, { sortKey: "sharpe", desc: true });
@@ -716,18 +750,21 @@ async function initMethodology() {
 <h3>The construction</h3>
 <ul>${M.construction.map(s => `<li>${s}</li>`).join("")}</ul>
 <p>The guards a stock book needs and a futures book does not: a penny-stock floor in the market's own quote units, a liquidity floor and a market-value floor in USD (each with a 20% exit band and a one-day lag), a traded-days test, one share class per issuer, foreign and depositary listings excluded, isolated bad prints blanked and unadjusted consolidations cut from the price history, returns capped at five trailing standard deviations before any compounding indicator, characteristics winsorised at 1% a day, a 5% per-name cap, and a 10% net sector cap on the books that are not sector-neutral.</p>
-<p>Four constructions of every book are shown. <strong>Cap-weighted 2×3</strong> follows the published academic definitions: the whole market is ranked; names are split into <em>big</em> (the largest names covering 90% of market value) and <em>small</em>; inside each group the top 30% by rank are long and the bottom 30% short, value-weighted; the factor is the average of the small and big spreads. Size is the small half minus the big half, value-weighted. Low beta is the beta-neutral book of Frazzini &amp; Pedersen (2014): rank-weighted, low-beta names long and levered to beta one, high-beta names short and de-levered to beta one, so it is beta neutral and net long in dollars. <strong>Sector-neutral</strong> ranks and balances the legs inside each GICS sector (thin sectors pooled on the day), so no sector carries a net position; <strong>plain</strong> ranks the whole market at equal weight with a 10% net sector cap; <strong>inverse-vol</strong> sizes names by 1/σ (63-day EWMA, floored at 8%) and re-balances the legs. Every book caps a name at ${(d.max_weight * 100).toFixed(0)}% of gross with the excess redistributed inside the leg.</p>
+<p>Every factor is built cap-weighted and sector-neutral at equal weight; the eight headline styles and the family composites also plain at equal weight and sector-neutral at inverse volatility. <strong>Cap-weighted 2×3</strong> follows the published academic definitions: the whole market is ranked; names are split into <em>big</em> (the largest names covering 90% of market value) and <em>small</em>; inside each group the top 30% by rank are long and the bottom 30% short, value-weighted; the factor is the average of the small and big spreads. Size is the small half minus the big half, value-weighted. Low beta is the beta-neutral book of Frazzini &amp; Pedersen (2014): rank-weighted, low-beta names long and levered to beta one, high-beta names short and de-levered to beta one, so it is beta neutral and net long in dollars. <strong>Sector-neutral</strong> ranks and balances the legs inside each GICS sector (thin sectors pooled on the day), so no sector carries a net position; <strong>plain</strong> ranks the whole market at equal weight with a 10% net sector cap; <strong>inverse-vol</strong> sizes names by 1/σ (63-day EWMA, floored at 8%) and re-balances the legs. Every book caps a name at ${(d.max_weight * 100).toFixed(0)}% of gross with the excess redistributed inside the leg.</p>
 <h3>Gearing</h3>
 <p>Each book targets ${(d.target_vol * 100).toFixed(0)}% annualised volatility: the position scalar is the target over the trailing ${d.gearing_lookback}-day realised vol of the ungeared book's PnL, lagged a day, capped at ${d.leverage_cap}× gross, and held until it has drifted ${((d.gearing_buffer || 0) * 100).toFixed(0)}% from the value in force. Backward-looking by design, and piecewise constant by design, so the book is re-geared a handful of times a year rather than daily. A diversified sector-neutral stock book runs 2-3% ungeared, so the cap is a budget for gross exposure rather than a venue limit; the gearing chart on each book's page shows where it binds. Turnover is quoted per unit of capital and, beside it, per unit of gross: the first is what the cost model charges, the second is how much the factor itself churns.</p>
 <h3>Data</h3>
 <p>EODHD. Daily adjusted and raw closes, volume, dividends and splits for every common stock ever listed on each market's exchanges, delisted names included; annual and quarterly statements with filing dates (believed where they are real: the US; elsewhere the period end plus a per-market lag); shares outstanding restated to today's terms and split-adjusted back; FX from 1971-1985. The closes are repaired at build time (EODHD's sentinels, one-day spikes, adjusted-only jumps and scale breaks beyond +100%/−75% in a day are removed; a genuine move beyond those bounds is lost with them). <strong>The universe is point in time</strong>: each month end the top N names by market value as it then stood, one share class per issuer, so a name that later shrank or went bust is in the history for the months it belonged and no book is survivorship-biased. The fundamental styles start where twenty names have statements, 1995-2006 in the developed markets and 2005-2012 in the emerging ones. Quality's growth component needs five years of statements and starts later.</p>
+<h3>The factor library</h3>
+<p>${META.factor_order.length} factors in ${Object.keys(META.families || {}).length} families, each defined from the paper cited in the table below and not tuned. Every input enters on the day it was public: statements on their filing date (or the period end plus the market's lag), earnings reports the session after the report, and regulator files the session after their measured publication date. Return-based measures use daily returns capped at five trailing standard deviations. A factor is built in a market only where at least 60% of the universe has a value for it. Traded value is the raw close times volume on the same share basis: the vendor restates most volume into today's share terms, and where a split left the volume unchanged the earlier volume is divided by the split ratio, so a name that later split is not counted as more liquid in its past.</p>
+<p>Short interest and positioning come from public regulator files: FINRA (US short interest, twice monthly from 2018; daily off-exchange short-sale volume from 2009), the US Securities and Exchange Commission (fails to deliver; insider transactions on Forms 3, 4 and 5), the Australian Securities and Investments Commission (daily short positions from 2010), the Hong Kong Securities and Futures Commission (weekly short positions from 2012) and the UK Financial Conduct Authority (disclosed net short positions from 2012). The data belong to those bodies; this site shows only what is computed from them.</p>
 <h3>Costs</h3>
 <p>Commission plus half the spread on every unit traded, stamp duty or a financial-transaction tax on the leg it falls on (London 0.5% on purchases, Hong Kong 0.1% each side, Taiwan 0.3% on sales, and so on), and a flat borrow rate on the short notional, all per market from the table on the access tab. No market impact: capacity is a separate question.</p>
 <h3>Windows and errors</h3>
 <p>Sharpe ratios are shown over the whole sample, since 2010, since 2021 (the window the fundamental styles cover), the last three years and this year. The standard error of a Sharpe ratio is roughly 1/√years: 0.26 over 15 years, 0.45 over five, 0.7 over two. Most cells since 2021 are inside their error bars.</p>
 <h3>Caveats</h3>
 <ul>${M.caveats.map(s => `<li>${s}</li>`).join("")}</ul>`;
-  $("#factor-table").replaceChildren(buildTable([{ key: "label", label: "Style", render: (v, r) => factorTag(r.key) }, { key: "blurb", label: "What is ranked", render: v => el("span", { style: "white-space:normal", text: v }) }, { key: "rebalance", label: "Re-struck" }, { key: "smoothing", label: "Smoothing, days", num: true, nd: 0 }, { key: "panels", label: "Panels", render: v => txt((v || []).join(", ") || "returns") }, { key: "literature", label: "Source", render: v => el("span", { style: "white-space:normal", text: v }) }],
+  $("#factor-table").replaceChildren(buildTable([{ key: "label", label: "Style", render: (v, r) => factorTag(r.key) }, { key: "family", label: "Family", render: v => txt(META.families?.[v] || v || "") }, { key: "blurb", label: "What is ranked", render: v => el("span", { style: "white-space:normal", text: v }) }, { key: "rebalance", label: "Re-struck" }, { key: "smoothing", label: "Smoothing, days", num: true, nd: 0 }, { key: "panels", label: "Panels", render: v => txt((v || []).join(", ") || "returns") }, { key: "literature", label: "Source", render: v => el("span", { style: "white-space:normal", text: v }) }],
     META.factor_order.map(k => ({ key: k, ...fac(k) }))));
   const G = [
     ["g-sharpe", "Sharpe ratio", "Annualised mean daily return over annualised daily volatility, net of costs, with no risk-free rate subtracted (the book is dollar neutral: the long leg's financing and the short leg's rebate roughly cancel). Standard error about 1/√years."],

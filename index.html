@@ -61,6 +61,8 @@
   <p class="caveat"><b>Read first</b>Simulated books on EODHD end-of-day data, point-in-time universes that include the names that have since delisted. Filing dates are real only in the US (elsewhere the period end plus a per-market lag); Argentina's cells are empty because too few names clear the liquidity floor; tier-3 cells cannot be shorted and are measurements, not products.</p>
 
   <div class="filters">
+    <span class="filter-label">Family</span>
+    <select class="ctl" id="monitor-family" aria-label="Factor family"></select>
     <span class="filter-label">Construction</span>
     <div class="seg" role="radiogroup" aria-label="Variant" data-filter="monitor.variant"></div>
     <span class="filter-label">Window</span>
@@ -111,6 +113,8 @@
     <span class="filter-label">Market</span>
     <select class="ctl" id="country-select" aria-label="Market"></select>
     <span id="country-tier"></span>
+    <span class="filter-label">Family</span>
+    <select class="ctl" id="country-family" aria-label="Factor family"></select>
     <span class="filter-label">Construction</span>
     <div class="seg" role="radiogroup" aria-label="Variant" data-filter="country.variant"></div>
   </div>
