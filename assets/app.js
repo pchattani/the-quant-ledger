@@ -69,12 +69,13 @@ const state = {
   style: { key: "momentum", variant: "plain_cap" },
   book: { id: null, window: "all", leg: "all" },
   pure: { code: null },
+  research: { code: null, family: "headline", factor: null, measure: "ic_t" },
   access: { code: null },
 };
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   if (p.get("tab")) state.tab = p.get("tab");
-  if (p.get("market")) { state.country.code = p.get("market"); state.pure.code = p.get("market"); }
+  if (p.get("market")) { state.country.code = p.get("market"); state.pure.code = p.get("market"); state.research.code = p.get("market"); }
   if (p.get("style")) state.style.key = p.get("style");
   if (p.get("variant")) { state.monitor.variant = p.get("variant"); state.country.variant = p.get("variant"); state.style.variant = p.get("variant"); }
   if (p.get("book")) state.book.id = p.get("book");
@@ -87,6 +88,7 @@ function writeHash() {
   if (state.tab === "style") { p.set("style", state.style.key); p.set("variant", state.style.variant); }
   if (state.tab === "book" && state.book.id) p.set("book", state.book.id);
   if (state.tab === "pure" && state.pure.code) p.set("market", state.pure.code);
+  if (state.tab === "research" && state.research.code) p.set("market", state.research.code);
   try { history.replaceState(null, "", "#" + p.toString()); } catch (_) { /* sandboxed */ }
 }
 
@@ -331,7 +333,7 @@ const emptyFig = (msg, height = 300) => ({ data: [], layout: L({ height, annotat
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 const inited = {};
-const INIT = { monitor: initMonitor, country: initCountry, style: initStyle, book: initBook, pure: initPure, access: initAccess, methodology: initMethodology };
+const INIT = { monitor: initMonitor, country: initCountry, style: initStyle, book: initBook, research: initResearch, pure: initPure, access: initAccess, methodology: initMethodology };
 async function showTab(tab, { push = true } = {}) {
   if (!INIT[tab]) tab = "monitor";
   state.tab = tab;
@@ -343,6 +345,7 @@ async function showTab(tab, { push = true } = {}) {
   else if (tab === "style") await renderStyle();
   else if (tab === "book") await renderBook();
   else if (tab === "pure") await renderPure();
+  else if (tab === "research") await renderResearch();
   window.dispatchEvent(new Event("resize"));
 }
 function openBook(id) { state.book.id = id; showTab("book"); }
@@ -354,6 +357,7 @@ async function main() {
   [META, MX] = await Promise.all([load("meta.json"), load("matrix.json")]);
   if (!state.country.code || !META.markets[state.country.code]) state.country.code = META.market_order[0];
   if (!state.pure.code || !META.markets[state.pure.code]) state.pure.code = META.market_order[0];
+  if (!state.research.code || !META.markets[state.research.code]) state.research.code = META.market_order[0];
   if (!META.factors[state.style.key]) state.style.key = META.factor_order[0];
   if (!state.book.id || !MX.summaries[state.book.id]) state.book.id = bookId(state.country.code, state.style.key, META.default_variant);
   if (!MX.summaries[state.book.id]) state.book.id = Object.keys(MX.summaries)[0];
@@ -685,6 +689,108 @@ async function renderBook() {
 }
 
 // ── Pure factors ─────────────────────────────────────────────────────────────
+// ── Research ─────────────────────────────────────────────────────────────────
+const R_MEASURES = [["ic_t", "IC t-stat"], ["t_net", "Book t-stat"], ["alpha_t", "Alpha t-stat"]];
+const R_MEASURE_TEXT = { ic_t: "t-statistic of the monthly rank IC", t_net: "t-statistic of the book's net return", alpha_t: "t-statistic of the alpha over the market and the headline styles" };
+const rFamFactors = (f, have) => (f === "all" ? META.factor_order : famFactors(f)).filter(k => have[k]);
+async function initResearch() {
+  const sel = $("#research-select");
+  sel.replaceChildren(...META.market_order.map(c => el("option", { value: c, text: `${c} · ${mkt(c).name}` })));
+  sel.value = state.research.code;
+  sel.addEventListener("change", () => { state.research.code = sel.value; writeHash(); renderResearch(); });
+  const fs = $("#research-family");
+  fs.replaceChildren(el("option", { value: "all", text: `All factors (${META.factor_order.length})` }), ...famOptions().map(([k, l]) => el("option", { value: k, text: `${l} (${famFactors(k).length})` })));
+  fs.value = state.research.family;
+  fs.addEventListener("change", () => { state.research.family = fs.value; renderResearch(); });
+  segFilter("research.measure", R_MEASURES, () => state.research.measure, v => { state.research.measure = v; renderResearchBoard(); });
+  await renderResearch();
+}
+async function renderResearch() {
+  const code = state.research.code;
+  $("#research-select").value = code;
+  let D = null;
+  try { D = await load(`research/${code}.json`); } catch (_) { D = null; }
+  if (!D || !D.rows || !D.rows.length) {
+    $("#research-note").textContent = "not run for this market";
+    $("#research-tiles").replaceChildren(); $("#research-table").replaceChildren();
+    for (const id of ["chart-r-decay", "chart-r-deciles"]) mount(id, emptyFig("—"));
+    await renderResearchBoard();
+    return;
+  }
+  const byKey = Object.fromEntries(D.rows.map(r => [r.factor, r]));
+  const keys = rFamFactors(state.research.family, byKey);
+  const rows = keys.map(k => byKey[k]);
+  if (!byKey[state.research.factor] || !keys.includes(state.research.factor)) state.research.factor = keys[0] || D.rows[0].factor;
+  const m = D.testing || {};
+  $("#research-note").textContent = `${D.rows.length} factors · score ranked within sector · month-end dates · ${dateLabel(D.first)} → ${dateLabel(D.last)}`;
+  $("#research-tiles").replaceChildren(
+    tile("Factors tried", String(m.tried ?? D.rows.length), "each one definition, fixed before the run"),
+    tile("IC clears t = 3", `${m.ic_clear ?? "—"} of ${m.ic_tested ?? "—"}`, `${m.ic_clear_negative ?? 0} clear it with the wrong sign`),
+    tile("Book clears t = 3", `${m.book_clear ?? "—"} of ${m.book_tested ?? "—"}`, `net of costs · ${m.book_clear_negative ?? 0} significantly negative`),
+    tile("Alpha clears t = 3", `${m.alpha_clear ?? "—"} of ${m.alpha_tested ?? "—"}`, "over the market and the headline styles"),
+    tile("Expected by chance", fmt(m.expected_by_chance, 1), `two-sided, at t = ${fmt(m.hurdle, 0)}, if no factor worked`),
+    tile("Holdout agrees", isNum(m.holdout_same_sign) ? pctU(m.holdout_same_sign, 0) : "—", "books whose 2024+ net Sharpe has the sign of the years before"),
+  );
+  const tcell = (v) => el("span", { class: "wash", text: fmt(v, 1, true), style: wash(v, 5), title: !isNum(v) ? "" : Math.abs(v) >= 3 ? "clears the hurdle of 3" : "below the hurdle of 3" });
+  const cols = [
+    { key: "label", label: "Factor", render: (v, r) => factorTag(r.factor) },
+    ...(state.research.family === "all" ? [{ key: "family_label", label: "Family" }] : []),     // the family select already says it
+    { key: "ic", label: "IC", num: true, title: "Mean monthly rank IC against the return of the next 21 sessions", render: v => signed(v, 3) },
+    { key: "ic_t", label: "t", num: true, title: "t-statistic of the mean IC (non-overlapping months)", render: tcell },
+    { key: "ic_holdout", label: "IC 2024+", num: true, title: "Mean IC in the holdout", render: v => signed(v, 3) },
+    { key: "spread_ann", label: "D10−D1", num: true, title: "Top tenth less bottom tenth, % a year, before costs", render: v => signedPct(v, 1) },
+    { key: "long_share", label: "Long side", num: true, title: "Share of the spread earned by the top tenth against the universe", render: (v, r) => txt(isNum(v) && v >= 0 && v <= 1.5 && r.spread_ann >= 0.01 ? pctU(v, 0) : "—") },   // defined for a positive spread only
+    { key: "half_life", label: "Half-life", num: true, title: "Sessions for the rank autocorrelation to fall to one half", render: (v, r) => txt(isNum(v) ? fmt(v, 0) : (isNum(r.ac_252) ? ">252" : "—")) },
+    { key: "sr_net", label: "Net SR", num: true, render: v => washCell(v, 2, 1.0) },
+    { key: "t_net", label: "t", num: true, title: "t-statistic of the book's net mean return", render: tcell },
+    { key: "sr_net_holdout", label: "SR 2024+", num: true, render: v => signed(v, 2) },
+    { key: "turnover", label: "Turnover", num: true, title: "One-way, times the book's gross, a year", render: v => txt(isNum(v) ? fmt(v, 1) + "×" : "—") },
+    { key: "breakeven_bps", label: "Breakeven", num: true, title: "One-way cost in bps at which the gross return is gone", render: v => txt(isNum(v) ? fmt(v, 0) : "—") },
+    { key: "capacity_usd_m", label: "Capacity $m", num: true, title: "AUM at which the book's average dollar sits in a position equal to 10% of a day's traded value", render: v => txt(isNum(v) ? Math.round(v).toLocaleString() : "—") },
+    { key: "alpha_ann", label: "α %/yr", num: true, title: "Annual alpha of the gross book over the market and the headline styles of this market", render: v => signedPct(v, 1) },
+    { key: "alpha_t", label: "t", num: true, title: "Newey-West t-statistic of the alpha", render: tcell },
+    { key: "span_r2", label: "R²", num: true, title: "Share of the book's variance the market and the headline styles explain", nd: 2 },
+  ];
+  sortableTable($("#research-table"), cols, rows.map(r => ({ ...r, label: fac(r.factor).label, family_label: META.families?.[famOf(r.factor)] || "" })),
+    { sortKey: "ic_t", desc: true, onRow: r => { state.research.factor = r.factor; renderResearchFactor(D); }, current: r => r.factor === state.research.factor });
+  renderResearchFactor(D);
+  await renderResearchBoard();
+}
+function renderResearchFactor(D) {
+  const k = state.research.factor, name = fac(k).label, color = fcol(k);
+  for (const tr of $$("#research-table tbody tr")) tr.removeAttribute("aria-current");
+  const dk = D.decay?.[k], dc = D.deciles?.[k];
+  $("#research-decay-ctx").textContent = `${name} · rank IC by horizon, sessions ahead · every fifth session`;
+  $("#research-decile-ctx").textContent = `${name} · next-month return of each tenth less the universe, % a year`;
+  mount("chart-r-decay", dk ? {
+    data: [{ type: "bar", x: dk.horizon.map(h => `${h}d`), y: dk.ic, customdata: dk.t, marker: { color: dk.ic.map(v => rgba(color, 0.85)) }, name: "IC",
+      hovertemplate: "IC %{y:.3f}<br>t %{customdata:.1f}<extra>" + name + "</extra>" }],
+    layout: L({ height: 320, showlegend: false, hovermode: "closest", xaxis: { type: "category", title: { text: "horizon", font: { size: 11, color: T.muted } } }, yaxis: { tickformat: ".3f", zeroline: true }, shapes: [hline(0)] }),
+  } : emptyFig("No decay for this factor", 320));
+  mount("chart-r-deciles", dc ? {
+    data: [{ type: "bar", x: dc.decile.map(d => d === 1 ? "1 · short" : d === dc.decile.length ? `${d} · long` : String(d)), y: dc.excess.map(v => v * 100), customdata: dc.names,
+      marker: { color: dc.excess.map(v => v < 0 ? T.down : T.up) }, name: "excess", hovertemplate: "%{y:.1f}% a year<br>%{customdata:.0f} names<extra>" + name + "</extra>" }],
+    layout: L({ height: 320, showlegend: false, hovermode: "closest", xaxis: { type: "category", title: { text: "tenth of the cross-section, by score", font: { size: 11, color: T.muted } } }, yaxis: { ticksuffix: "%", zeroline: true }, shapes: [hline(0)] }),
+  } : emptyFig("No deciles for this factor", 320));
+}
+async function renderResearchBoard() {
+  let B = null;
+  try { B = await load("research/board.json"); } catch (_) { B = null; }
+  const key = state.research.measure;
+  $("#research-board-ctx").textContent = `${R_MEASURE_TEXT[key]} · every market · blank where the factor is not built`;
+  if (!B || !B[key]) { mount("chart-r-board", emptyFig("Not run yet")); return; }
+  const have = Object.fromEntries(Object.keys(B[key]).map(k => [k, true]));
+  const keys = rFamFactors(state.research.family, have);
+  const mk = B.markets;
+  const z = keys.map(k => mk.map(c => { const v = B[key][k]?.[c]; return isNum(v) ? v : null; }));
+  mount("chart-r-board", keys.length ? {
+    data: [{ type: "heatmap", x: mk, y: keys.map(k => fac(k).label), z, zmin: -5, zmax: 5, colorscale: DIV, xgap: 1, ygap: 1,
+      text: z.map(r => r.map(v => isNum(v) ? v.toFixed(1) : "")), texttemplate: keys.length <= 30 ? "%{text}" : "", textfont: { family: T.mono, size: 10, color: T.ink1 },
+      hovertemplate: "%{y} · %{x}<br>%{z:.1f}<extra></extra>", colorbar: { thickness: 10, outlinewidth: 0, tickfont: { color: T.muted, size: 10 }, title: { text: "t", font: { color: T.muted, size: 10 } } } }],
+    layout: L({ height: Math.max(360, 20 * keys.length + 110), hovermode: "closest", margin: { l: 210, r: 20, t: 12, b: 40 }, yaxis: { autorange: "reversed", tickfont: { size: 10.5, color: T.ink2 } }, xaxis: { side: "top", tickfont: { size: 11, color: T.ink2 } } }),
+  } : emptyFig("No factor of this family"));
+}
+
 async function initPure() {
   const sel = $("#pure-select");
   sel.replaceChildren(...META.market_order.map(c => el("option", { value: c, text: `${c} · ${mkt(c).name}` })));
@@ -758,6 +864,8 @@ async function initMethodology() {
 <h3>The factor library</h3>
 <p>${META.factor_order.length} factors in ${Object.keys(META.families || {}).length} families, each defined from the paper cited in the table below and not tuned. Every input enters on the day it was public: statements on their filing date (or the period end plus the market's lag), earnings reports the session after the report, and regulator files the session after their measured publication date. Return-based measures use daily returns capped at five trailing standard deviations. A factor is built in a market only where at least 60% of the universe has a value for it. Traded value is the raw close times volume on the same share basis: the vendor restates most volume into today's share terms, and where a split left the volume unchanged the earlier volume is divided by the split ratio, so a name that later split is not counted as more liquid in its past.</p>
 <p>Short interest and positioning come from public regulator files: FINRA (US short interest, twice monthly from 2018; daily off-exchange short-sale volume from 2009), the US Securities and Exchange Commission (fails to deliver; insider transactions on Forms 3, 4 and 5), the Australian Securities and Investments Commission (daily short positions from 2010), the Hong Kong Securities and Futures Commission (weekly short positions from 2012) and the UK Financial Conduct Authority (disclosed net short positions from 2012). The data belong to those bodies; this site shows only what is computed from them.</p>
+<h3>Research</h3>
+<p>The Research tab asks of each score what a Sharpe ratio cannot: whether it ranks names by the return of the following month (the rank IC, on month-end dates so the observations do not overlap), how long that lasts (the IC at 1 to 126 sessions), where in the cross-section the return sits (tenths of the universe, and the long side's share of the spread), how fast the ordering turns over, what one-way cost would take the gross return to zero, how much capital the book holds before its average position is a tenth of a day's traded value, and whether the book earns anything the market and the momentum, value, quality, low-beta and size books of the same market do not already explain. Every factor has one definition, fixed from its paper before any of this was run; with ${META.factor_order.length} of them tried, the bar is a t-statistic of 3, and each market's page counts how many clear it beside the number chance alone would give. The window from 2024 is a holdout: it is shown next to the earlier years and was never used to choose anything.</p>
 <h3>Costs</h3>
 <p>Commission plus half the spread on every unit traded, stamp duty or a financial-transaction tax on the leg it falls on (London 0.5% on purchases, Hong Kong 0.1% each side, Taiwan 0.3% on sales, and so on), and a flat borrow rate on the short notional, all per market from the table on the access tab. No market impact: capacity is a separate question.</p>
 <h3>Windows and errors</h3>
@@ -775,6 +883,14 @@ async function initMethodology() {
     ["g-turnover", "Turnover", "Gross notional traded in a year divided by capital (one-way); beside it, divided by the book's gross, which is how much the factor itself churns regardless of leverage. Cost is what the market's schedule charges on the capital figure plus borrow, in bps of capital a year."],
     ["g-pure", "Pure factor return", "The daily coefficient on a standardised style score in a cross-sectional regression of stock returns on market, sector dummies (sum to zero) and styles, weighted by √market value: the return to one unit of the style with everything else held at zero (toraniko's construction)."],
     ["g-loading", "Loading", "The slope of a book's daily PnL on a pure factor return; R² is the share of the book's variance the pure factors explain; the IR of α is the annualised intercept over the annualised residual volatility, the Sharpe of what the factors cannot explain."],
+    ["g-ic", "Rank IC", "The Spearman correlation, across the names of the universe on one date, between the factor's score (ranked within sector, signed the way the book trades it) and the return of the following 21 sessions. Measured on each month's last session so the observations do not overlap; the t-statistic is the mean over its standard error. A mean of 0.02 to 0.05 that holds its sign is a real signal."],
+    ["g-decay", "IC decay", "The same correlation against the return of the next 1, 5, 21, 63 and 126 sessions, measured every fifth session, with the t-statistic deflated for the overlap of the windows. A score whose IC holds to 63 sessions loses little to a monthly rebalance; one that is gone after five does not survive its costs."],
+    ["g-decile", "Deciles", "The universe sorted into tenths by score each month-end; the bar is the mean return of the tenth over the next 21 sessions less the universe's, annualised and before costs. D10−D1 is the top tenth less the bottom; the long side is the top tenth's share of it, which matters where shorting is dear or barred."],
+    ["g-halflife", "Half-life", "The number of sessions after which the cross-sectional rank correlation of the score with itself has fallen to one half; '>252' means the ordering is still more than half the same a year on."],
+    ["g-breakeven", "Breakeven cost", "The book's gross profit divided by the notional it traded, in basis points: the one-way cost at which the factor earns nothing. Set against the cost assumed for the market."],
+    ["g-capacity", "Capacity", "The capital at which the book's average dollar sits in a position equal to 10% of that name's daily traded value (the 63-day average, lagged a day), at the median of the last three years. A scale, not a limit: the impact of trading is not modelled."],
+    ["g-spanning", "Spanning alpha", "The intercept of a regression of the book's daily gross return on the market and the momentum, value, quality, low-beta and size books of the same market and construction (the factor's own book left out), with Newey-West standard errors. A factor that is a known style again has a high R² and no alpha."],
+    ["g-hurdle", "The hurdle of 3", "With many factors tried, some clear a t-statistic of 2 by chance. The scoreboard marks 3, counts how many clear it, and shows beside that the number chance alone would give. The window from 2024 is a holdout: reported, never used to choose a definition."],
     ["g-tier", "Tier", "1: stock lending is deep and shorting routine (MSCI ++/++). 2: allowed with restrictions (eligible lists, registration, reporting). 3: restricted or banned; the short leg cannot be traded and the book is a measurement."],
     ["g-adv", "ADV", "63-day mean of traded value in USD (price × volume × FX, lagged a day). A name enters the universe above the market's floor and leaves 20% below it."],
     ["g-pit", "Point in time", "A statement value is usable from max(period end + lag, first seen in the archive). Before the archive, the lag convention governs; the archive snapshots every table weekly."],

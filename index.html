@@ -36,6 +36,7 @@
     <button class="tab" role="tab" data-tab="country" aria-selected="false" aria-controls="tab-country">Country</button>
     <button class="tab" role="tab" data-tab="style" aria-selected="false" aria-controls="tab-style">Style</button>
     <button class="tab" role="tab" data-tab="book" aria-selected="false" aria-controls="tab-book">Book</button>
+    <button class="tab" role="tab" data-tab="research" aria-selected="false" aria-controls="tab-research">Research</button>
     <button class="tab" role="tab" data-tab="pure" aria-selected="false" aria-controls="tab-pure">Pure factors</button>
     <button class="tab" role="tab" data-tab="access" aria-selected="false" aria-controls="tab-access">Markets &amp; access</button>
     <button class="tab" role="tab" data-tab="methodology" aria-selected="false" aria-controls="tab-methodology">Methodology</button>
@@ -293,6 +294,44 @@
     <figure class="card half" data-chart="p_loadings">
       <figcaption><h3>What the books load on <span class="ctx">sector-neutral, dollar-weighted books regressed on market and pure styles · beta with t-stat · R² · Sharpe of the residual</span></h3></figcaption>
       <div class="tablewrap" id="p-loadings"></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Research ────────────────────────────────────────────────────────── -->
+<section id="tab-research" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">Research</span><h2 class="sh-title">Does the score rank returns?</h2><p class="sh-sub">A book's Sharpe says one construction made money. These ask the earlier questions of the score itself, in its sector-neutral form: whether it orders names by the return of the following month, for how long, in which part of the cross-section, at what cost and for how much money, and whether the result is a new one or a known style again. Definitions were fixed from the literature before any of this was run; the window from 2024 is a holdout, shown and never used.</p></div>
+  </div>
+  <div class="sel-row">
+    <span class="filter-label">Market</span>
+    <select class="ctl" id="research-select" aria-label="Market"></select>
+    <span class="filter-label">Family</span>
+    <select class="ctl" id="research-family" aria-label="Factor family"></select>
+    <span class="note" style="margin:0" id="research-note"></span>
+  </div>
+  <div class="tiles" id="research-tiles"></div>
+  <div class="grid">
+    <figure class="card" data-chart="r_table">
+      <figcaption><h3>Factor scoreboard <span class="ctx">sector-neutral, equal weight · select a row for its decay and deciles · a t-statistic of 3 is the hurdle</span></h3>
+        <div class="card-tools"><a class="glossary-link" href="#tab=methodology&g=g-ic">ⓘ definitions</a></div></figcaption>
+      <div class="tablewrap" id="research-table"></div>
+    </figure>
+    <figure class="card half" data-chart="r_decay">
+      <figcaption><h3>How long the score lasts <span class="ctx" id="research-decay-ctx">rank IC by horizon, sessions ahead</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-r-decay"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card half" data-chart="r_deciles">
+      <figcaption><h3>Where in the cross-section <span class="ctx" id="research-decile-ctx">next-month return of each tenth less the universe, % a year</span></h3>
+        <div class="card-tools"><button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-r-deciles"></div><div class="tablewrap" hidden></div>
+    </figure>
+    <figure class="card" data-chart="r_board">
+      <figcaption><h3>Across markets <span class="ctx" id="research-board-ctx"></span></h3>
+        <div class="card-tools"><div class="seg" role="radiogroup" aria-label="Measure" data-filter="research.measure"></div>
+          <button class="btn-icon table-toggle" aria-pressed="false" title="Table view" aria-label="Show as table">⊞</button></div></figcaption>
+      <div class="plot" id="chart-r-board"></div><div class="tablewrap" hidden></div>
     </figure>
   </div>
 </section>
