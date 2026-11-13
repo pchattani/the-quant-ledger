@@ -97,3 +97,7 @@ footer .page p + p { margin-top: 10px; }
 /* data-source badges */
 .tier.src.pit { background: rgba(66, 160, 120, 0.16); color: #7fd3a8; border-color: rgba(66, 160, 120, 0.4); }
 .tier.src.surv { background: rgba(200, 150, 60, 0.14); color: #e2b36a; border-color: rgba(200, 150, 60, 0.4); }
+
+/* a header that opens a family */
+button.linkish { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+button.linkish:hover { color: var(--accent, #ffb224); }

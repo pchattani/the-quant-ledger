@@ -64,7 +64,7 @@ const hline = (y, yref = "y", color = T.axis, dash = "dot") => ({ type: "line", 
 // ── State ────────────────────────────────────────────────────────────────────
 const state = {
   tab: "monitor",
-  monitor: { variant: "plain_cap", window: "since_2010", navwindow: "all", family: "headline" },
+  monitor: { variant: "plain_cap", window: "since_2010", navwindow: "all", family: "families" },
   country: { code: null, variant: "plain_cap", window: "all", family: "headline" },
   style: { key: "momentum", variant: "plain_cap" },
   book: { id: null, window: "all", leg: "all" },
@@ -107,11 +107,11 @@ const mkt = (c) => META.markets[c] || { code: c, name: c, tier: 3 };
 const fac = (k) => META.factors[k] || { key: k, label: k };
 const bookId = (m, f, v) => `eq_${m}_${f}_${v}`;
 const parseBook = (id) => { const p = id.split("_"); return { market: p[1], factor: p.slice(2, -2).join("_"), variant: p.slice(-2).join("_") }; };
-// families: "headline" is the eight original styles; every other key is a family of the factor file
+// families: "families" is one composite per family, "headline" the eight original styles; every other key is a family of the factor file
 const famOf = (k) => fac(k).family || "other";
-const famLabel = (f) => f === "headline" ? "Headline styles" : (META.families?.[f] || f);
-const famFactors = (f) => META.factor_order.filter(k => f === "headline" ? fac(k).headline : famOf(k) === f);
-const famOptions = () => [["headline", "Headline styles"], ...Object.keys(META.families || {}).map(k => [k, META.families[k]])];
+const famLabel = (f) => f === "families" ? "Families (composites)" : f === "headline" ? "Headline styles" : (META.families?.[f] || f);
+const famFactors = (f) => META.factor_order.filter(k => f === "families" ? k.startsWith("comp_") : f === "headline" ? fac(k).headline : famOf(k) === f);
+const famOptions = () => [["families", "Families (composites)"], ["headline", "Headline styles"], ...Object.keys(META.families || {}).map(k => [k, META.families[k]])];
 function fcol(k) {
   if (FACTOR_C[k]) return FACTOR_C[k];
   const peers = META.factor_order.filter(x => famOf(x) === famOf(k) && !FACTOR_C[x]);
@@ -417,6 +417,13 @@ async function initMonitor() {
   renderMatrix();
   renderComposites();
 }
+// a composite of books that lose to costs averages away their noise but not their cost: say how fast they trade
+function turnLabel(k, vk) {
+  const t = META.market_order.map(c => MX.summaries[bookId(c, k, vk)]?.turnover).filter(isNum).sort((a, b) => a - b);
+  if (!t.length) return "";
+  const med = t[Math.floor(t.length / 2)];
+  return med >= 50 ? ` · trades ${Math.round(med)}× capital a year (median market): the costs, not the signal` : ` · median turnover ${fmt(med, 0)}× a year`;
+}
 function renderKpis() {
   const vk = META.default_variant, cells = MX.variants[vk], comps = MX.composites[vk]?.factors || {};
   const srs = [];
@@ -435,7 +442,7 @@ function renderKpis() {
     tile("Median cell Sharpe", fmt(med), `sector-neutral, dollar-weighted · since 2010 · ${srs.length} cells`, { cls: upDown(med) }),
     tile("Cells positive since 2021", pos21.length ? pctU(pos21.reduce((a, b) => a + b, 0) / pos21.length, 0) : "—", `the window the fundamental styles cover · ${pos21.length} cells`),
     tile("Best style", best ? fac(best[0]).label : "—", best ? `${best[2]}-market composite · Sharpe ${fmt(best[1])} since 2010` : "", { cls: "up", spark: best ? comps[best[0]].spark : null }),
-    tile("Weakest style", worst ? fac(worst[0]).label : "—", worst ? `${worst[2]}-market composite · Sharpe ${fmt(worst[1])} since 2010` : "", { cls: "down", spark: worst ? comps[worst[0]].spark : null }),
+    tile("Weakest style", worst ? fac(worst[0]).label : "—", worst ? `${worst[2]}-market composite · Sharpe ${fmt(worst[1])} since 2010${turnLabel(worst[0], vk)}` : "", { cls: "down", spark: worst ? comps[worst[0]].spark : null }),
   );
 }
 function renderMatrix() {
@@ -445,7 +452,11 @@ function renderMatrix() {
   $("#matrix-ctx").textContent = isYtd ? "return this year, % of capital at 10% vol · select a cell to open the book · hatched = not shortable"
     : `Sharpe ratio ${WIN_LABEL[w].toLowerCase()}, net of costs · select a cell to open the book · hatched = not shortable`;
   const table = el("table", { class: "data" });
-  table.append(el("thead", {}, el("tr", {}, [el("th", { text: "Market" }), ...FL.map(f => el("th", { class: "n", text: fac(f).label }))])));
+  const expand = (f) => { const fam = famOf(f); if (!famFactors(fam).length) return; state.monitor.family = fam; $("#monitor-family").value = fam; renderMatrix(); renderComposites(); };
+  const head = (f) => state.monitor.family === "families"
+    ? el("th", { class: "n" }, el("button", { class: "linkish", title: `Open the ${famLabel(famOf(f))} family, factor by factor`, text: `${famLabel(famOf(f))} ▸`, onclick: () => expand(f) }))
+    : el("th", { class: "n", text: fac(f).label });
+  table.append(el("thead", {}, el("tr", {}, [el("th", { text: "Market" }), ...FL.map(head)])));
   const byTier = [1, 2, 3].map(t => META.market_order.filter(c => mkt(c).tier === t));
   const body = el("tbody");
   let n = 0;
@@ -720,6 +731,8 @@ function renderPortfolioBoard(B) {
     { key: "equal_sr", label: "Equal blend", num: true, title: "Net Sharpe of the families at equal weight", render: v => washCell(v, 2, 1.0) },
     { key: "equal_holdout", label: "2024+", num: true, render: v => signed(v, 2) },
     { key: "ic_sr", label: "IC blend", num: true, title: "Net Sharpe of the families weighted by IC", render: v => washCell(v, 2, 1.0) },
+    { key: "ridge_sr", label: "Ridge", num: true, title: "Net Sharpe of the ridge challenger (may short a family)", render: v => washCell(v, 2, 1.0) },
+    { key: "gbt_sr", label: "Trees", num: true, title: "Net Sharpe of the boosted-trees challenger", render: v => washCell(v, 2, 1.0) },
     { key: "best_single", label: "Best single", num: true, title: "Highest net Sharpe of any one factor's sector-neutral book in the market", render: (v, r) => el("span", { title: r.best_single_factor ? fac(r.best_single_factor).label : "" , text: fmt(v, 2) }) },
     { key: "turnover", label: "Turnover", num: true, title: "Optimised book: one-way, times capital, a year", render: v => txt(isNum(v) ? fmt(v, 1) + "×" : "—") },
     { key: "cost_bps", label: "Cost bps", num: true, title: "Optimised book: costs charged, bps of capital a year", render: v => txt(isNum(v) ? fmt(v, 0) : "—") },
@@ -728,6 +741,25 @@ function renderPortfolioBoard(B) {
     { key: "bias", label: "Bias", num: true, title: "Risk model: realised over forecast for random long-short books (one is right)", nd: 2 },
   ];
   sortableTable($("#portfolio-board"), cols, B.rows, { sortKey: "opt_sr", desc: true, onRow: r => { state.portfolio.code = r.market; $("#portfolio-select").value = r.market; writeHash(); renderPortfolio(); }, current: r => r.market === state.portfolio.code });
+  renderChallengers(B.challengers);
+}
+const CH_TEXT = { core_ic: "families weighted by their walk-forward IC", core_ridge: "ridge regression of next month's return on the families", core_gbt: "boosted trees on the families (can learn interactions)", core_opt: "optimised: equal-blend alpha through the risk model, costs and neutrality" };
+function renderChallengers(C) {
+  const host = $("#portfolio-challengers");
+  if (!C || !C.rows || !C.rows.length) { host.replaceChildren(el("p", { class: "empty", text: "Not built yet" })); return; }
+  const cols = [
+    { key: "book", label: "Challenger", render: (v) => el("span", { title: CH_TEXT[v] || "" }, [el("b", { text: fac(v).label })]) },
+    { key: "markets", label: "Markets", num: true, nd: 0 },
+    { key: "mean_sr", label: "Mean net SR", num: true, title: "Average net Sharpe over the markets where both books exist", render: v => washCell(v, 2, 1.0) },
+    { key: "mean_sr_base", label: "Equal blend", num: true, title: "The baseline's average net Sharpe over the same markets", render: v => washCell(v, 2, 1.0) },
+    { key: "mean_holdout", label: "2024+", num: true, render: v => signed(v, 2) },
+    { key: "mean_holdout_base", label: "Equal 2024+", num: true, render: v => signed(v, 2) },
+    { key: "ahead_early", label: "Ahead to 2009", num: true, nd: 0 },
+    { key: "ahead_late", label: "Ahead 2010-23", num: true, nd: 0 },
+    { key: "ahead_holdout", label: "Ahead 2024+", num: true, nd: 0 },
+    { key: "promoted", label: "Promoted", num: true, title: "Markets where it leads in all three windows", render: (v, r) => el("span", { title: (r.promoted_in || []).join(", "), text: `${v} of ${r.markets}` }) },
+  ];
+  sortableTable(host, cols, C.rows, { sortKey: "mean_sr", desc: true });
 }
 async function renderPortfolio() {
   const code = state.portfolio.code;
@@ -1023,8 +1055,10 @@ async function initMethodology() {
     ["g-hurdle", "The hurdle of 3", "With many factors tried, some clear a t-statistic of 2 by chance. The scoreboard marks 3, counts how many clear it, and shows beside that the number chance alone would give. The window from 2024 is a holdout: reported, never used to choose a definition."],
     ["g-riskmodel", "Risk model", "Every day the returns of the universe are regressed on a market term, sector dummies (summing to zero) and ten standardised styles (beta, momentum, size, book-to-price, earnings yield, profitability, investment, leverage, volatility, liquidity), weighted by the square root of market value. The factor covariance is an exponentially weighted average of the daily factor returns (half-life six months, three years of data, Newey-West for serial correlation); each name's specific variance is the same average of its residual, shrunk a quarter of the way to the median. A book's risk is split by each source's exposure times its marginal contribution, so the shares add to one."],
     ["g-bias", "Bias statistic", "A book's return over the next 21 sessions divided by the volatility the model forecast for it, collected every month-end; the standard deviation of that ratio is one if the forecasts are right. Shown for random long-short and long-only books, the market and the style books."],
-    ["g-optimiser", "The optimiser", "Each month-end: maximise expected return less half the risk aversion times the forecast variance less trading cost (commission, half spread and stamp, spread over a six-month holding) and borrow, subject to zero net dollars, zero net in every sector, zero beta, and each name within 5% of capital or one day's traded value at $100m. Expected return is the IC-weighted family score times the name's specific volatility times the score's own past IC (Grinold). Risk aversion is set so the forecast volatility is 10%. The book is then traded by the same engine as every other book: smoothed, geared to 10% realised volatility and charged costs."],
+    ["g-optimiser", "The optimiser", "Each month-end: maximise expected return less half the risk aversion times the forecast variance less trading cost (each name's commission, half spread and stamp, spread over a six-month holding) and its borrow rate on the day, subject to zero net dollars, zero net in every sector (and, in the pooled European market, in every country), zero beta, and each name within 5% of capital or one day's traded value at $100m. Expected return is the IC-weighted family score times the name's specific volatility times the score's own past IC (Grinold). Risk aversion is set so the forecast volatility is 10%. The book is then traded by the same engine as every other book: smoothed, geared to 10% realised volatility and charged costs."],
     ["g-attribution", "Attribution", "The optimised book's daily gross return regressed on the sector-neutral books of each family composite in the same market, with Newey-West errors: a family's contribution is its slope times that book's mean return, a year. The intercept is what the combination earns beyond holding the families."],
+    ["g-promotion", "Challengers and promotion", "The baseline combination is the families at equal weight: nothing is fitted. Four challengers try to beat it: weights by each family's walk-forward IC; a ridge regression of next month's ranked return on the family scores (it may short a family); gradient-boosted trees on the same features and target (100 trees of depth two, learning rate 0.05, half the rows per tree, refitted each January on the months known by then; Friedman 2001, Gu, Kelly and Xiu 2020); and the optimised book. Every setting was fixed before the first run. A challenger replaces the baseline in a market only if its net Sharpe is higher before 2010, in 2010-23 and in the 2024+ holdout."],
+    ["g-borrow", "Borrow tiers", "The core books pay borrow by name and day rather than one rate: a name in the bottom 30% of the day's market values pays twice the market's general-collateral rate, and a name whose short interest is 10% of its shares or more pays at least 5% a year (D'Avolio 2002: most stocks lend cheaply, the specials are the small and the heavily shorted). Short interest is published in the US, Australia, Hong Kong and the UK; elsewhere the size tier alone applies. The single-factor books keep one rate per market so they stay comparable with each other."],
     ["g-impact", "Market impact", "On top of the costs every book already pays, each trade is charged Y × the name's daily volatility × √(trade value / daily traded value) per unit traded: the square-root law (Torre 1997; Almgren et al. 2005; Tóth et al. 2011 find Y of order one). Shown at Y = 1 and at Y = 0.5 over the last five years, so the traded values are today's. Capacity is the capital at which the Sharpe ratio falls to half its value before impact."],
     ["g-tier", "Tier", "1: stock lending is deep and shorting routine (MSCI ++/++). 2: allowed with restrictions (eligible lists, registration, reporting). 3: restricted or banned; the short leg cannot be traded and the book is a measurement."],
     ["g-adv", "ADV", "63-day mean of traded value in USD (price × volume × FX, lagged a day). A name enters the universe above the market's floor and leaves 20% below it."],
